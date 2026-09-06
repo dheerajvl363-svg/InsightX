@@ -1,0 +1,13 @@
+{
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.venv": true,
+    "**/data/raw": true,
+    "**/data/processed": true,
+    "**/data/external": true
+  }
+}
