@@ -34,7 +34,7 @@ def validate_date_range(start: Optional[datetime], end: Optional[datetime]):
     "/posts",
     response_model=PostListResponse,
     summary="Query posts for analytics & NLP",
-    description="Returns paginated posts with deterministic ordering and optional platform, language, author, and date filters.",
+    description="Returns paginated posts with deterministic ordering and optional search, platform, language, author, and date filters.",
 )
 def get_posts(
     platform: Optional[str] = Query(None, description="Filter by platform name (e.g. 'X', 'Telegram')"),
@@ -42,6 +42,7 @@ def get_posts(
     start_date: Optional[datetime] = Query(None, description="Filter posts on or after this timestamp"),
     end_date: Optional[datetime] = Query(None, description="Filter posts on or before this timestamp"),
     author: Optional[str] = Query(None, description="Filter by author username/handle"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
     limit: int = Query(50, ge=1, le=200, description="Max posts to return (1-200)"),
     offset: int = Query(0, ge=0, description="Offset position for pagination"),
     db: Session = Depends(get_db),
@@ -55,6 +56,7 @@ def get_posts(
             start_time=start_date,
             end_time=end_date,
             author_username=author,
+            search=search,
             limit=limit,
             offset=offset,
         )
@@ -70,7 +72,7 @@ def get_posts(
     "/count",
     response_model=CountResponse,
     summary="Get post counts with filters",
-    description="Returns the total count of posts matching optional platform, language, and date range filters.",
+    description="Returns the total count of posts matching optional search, platform, language, and date range filters.",
 )
 def get_count(
     platform: Optional[str] = Query(None, description="Filter by platform name"),
@@ -78,6 +80,7 @@ def get_count(
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     author: Optional[str] = Query(None, description="Filter by author username"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
     db: Session = Depends(get_db),
 ) -> CountResponse:
     validate_date_range(start_date, end_date)
@@ -89,6 +92,7 @@ def get_count(
             start_time=start_date,
             end_time=end_date,
             author_username=author,
+            search=search,
         )
     except Exception as e:
         logger.error(f"Error counting posts: {e}", exc_info=True)

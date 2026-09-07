@@ -56,6 +56,7 @@ class AnalyticsService:
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         author_username: Optional[str] = None,
+        search: Optional[str] = None,
     ):
         """Applies standardized query filters across post queries."""
         if platform and platform.strip():
@@ -78,6 +79,9 @@ class AnalyticsService:
             clean_user = author_username.strip().lstrip("@").lower()
             query = query.join(Post.user).filter(func.lower(User.username) == clean_user)
 
+        if search and search.strip():
+            query = query.filter(Post.text.ilike(f"%{search.strip()}%"))
+
         return query
 
     def get_posts(
@@ -87,6 +91,7 @@ class AnalyticsService:
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         author_username: Optional[str] = None,
+        search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> PostListResponse:
@@ -102,6 +107,7 @@ class AnalyticsService:
             start_time=start_time,
             end_time=end_time,
             author_username=author_username,
+            search=search,
         )
 
         total = filtered_query.count()
@@ -159,6 +165,7 @@ class AnalyticsService:
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         author_username: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> CountResponse:
         """Returns count of posts matching filters."""
         query = self.db.query(Post)
@@ -169,6 +176,7 @@ class AnalyticsService:
             start_time=start_time,
             end_time=end_time,
             author_username=author_username,
+            search=search,
         )
 
         count = filtered_query.count()
@@ -180,6 +188,7 @@ class AnalyticsService:
                 "start_time": start_time,
                 "end_time": end_time,
                 "author_username": author_username,
+                "search": search,
             }.items()
             if v is not None
         }

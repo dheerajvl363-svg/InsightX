@@ -290,6 +290,48 @@ class TestAnalyticsService(unittest.TestCase):
             self.assertRegex(point.date, r"^\d{4}-\d{2}-\d{2}$")
 
 
+    def test_17_search_text_match(self):
+        result = self.service.get_posts(search="infrastructure")
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertIn("infrastructure", item.text.lower())
+
+    def test_18_search_case_insensitive(self):
+        lower_result = self.service.get_posts(search="insightx")
+        upper_result = self.service.get_posts(search="INSIGHTX")
+        mixed_result = self.service.get_posts(search="InSiGhTx")
+
+        self.assertGreater(lower_result.total, 0)
+        self.assertEqual(lower_result.total, upper_result.total)
+        self.assertEqual(lower_result.total, mixed_result.total)
+
+    def test_19_search_no_match(self):
+        result = self.service.get_posts(search="UnlikelyStringToMatch_9876543210")
+        self.assertEqual(result.total, 0)
+        self.assertEqual(len(result.items), 0)
+
+    def test_20_search_combined_with_platform_filter(self):
+        result = self.service.get_posts(search="infrastructure", platform="X")
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertEqual(item.platform, "X")
+            self.assertIn("infrastructure", item.text.lower())
+
+    def test_21_search_combined_with_language_filter(self):
+        result = self.service.get_posts(search="infrastructure", language="en")
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertEqual(item.language, "en")
+            self.assertIn("infrastructure", item.text.lower())
+
+    def test_22_count_with_search(self):
+        count_resp = self.service.get_post_count(search="InsightX")
+        self.assertIsInstance(count_resp, CountResponse)
+        self.assertGreater(count_resp.count, 0)
+        self.assertIn("search", count_resp.filters_applied)
+        self.assertEqual(count_resp.filters_applied["search"], "InsightX")
+
+
 class TestAnalyticsAPI(unittest.TestCase):
     """
     Integration tests for /api/v1/analytics FastAPI endpoints.
@@ -380,6 +422,48 @@ class TestAnalyticsAPI(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(data["total"], 0)
         self.assertEqual(len(data["items"]), 0)
+
+    def test_13_get_posts_with_search(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?search=InsightX")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertIn("insightx", item["text"].lower())
+
+    def test_14_get_posts_with_search_case_insensitive(self):
+        code1, data1 = call_api("GET", "/api/v1/analytics/posts?search=insightx")
+        code2, data2 = call_api("GET", "/api/v1/analytics/posts?search=INSIGHTX")
+        self.assertEqual(code1, 200)
+        self.assertEqual(code2, 200)
+        self.assertEqual(data1["total"], data2["total"])
+
+    def test_15_get_posts_with_search_no_match(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?search=NonExistentSearchMatchTermXYZ999")
+        self.assertEqual(code, 200)
+        self.assertEqual(data["total"], 0)
+        self.assertEqual(len(data["items"]), 0)
+
+    def test_16_get_posts_with_search_and_platform(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?search=infrastructure&platform=X")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertEqual(item["platform"], "X")
+            self.assertIn("infrastructure", item["text"].lower())
+
+    def test_17_get_posts_with_search_and_language(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?search=infrastructure&language=en")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertEqual(item["language"], "en")
+            self.assertIn("infrastructure", item["text"].lower())
+
+    def test_18_get_count_with_search(self):
+        code, data = call_api("GET", "/api/v1/analytics/count?search=InsightX")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["count"], 0)
+        self.assertEqual(data["filters_applied"].get("search"), "InsightX")
 
 
 if __name__ == "__main__":
