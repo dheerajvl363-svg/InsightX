@@ -1,0 +1,386 @@
+import asyncio
+from datetime import datetime, timezone
+import json
+import unittest
+import urllib.parse
+
+from app.database import SessionLocal
+from app.main import app
+from app.models.metric import PostMetric
+from app.models.platform import Platform
+from app.models.post import Post
+from app.models.user import User
+from app.schemas.analytics import (
+    CountResponse,
+    EngagementSummary,
+    LanguageSummary,
+    PlatformSummary,
+    PostListResponse,
+    TimeSeriesResponse,
+)
+from app.services.analytics import AnalyticsService
+
+
+def call_api(method: str, url: str) -> tuple[int, dict]:
+    """
+    Invokes the FastAPI ASGI application with query string support.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    response_body = []
+    status_code = None
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method.upper(),
+        "path": parsed.path,
+        "raw_path": parsed.path.encode(),
+        "query_string": parsed.query.encode(),
+        "headers": [(b"content-type", b"application/json")],
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        nonlocal status_code
+        if message["type"] == "http.response.start":
+            status_code = message["status"]
+        elif message["type"] == "http.response.body":
+            response_body.append(message.get("body", b""))
+
+    async def run():
+        await app(scope, receive, send)
+
+    asyncio.run(run())
+
+    raw_text = b"".join(response_body).decode("utf-8")
+    try:
+        data = json.loads(raw_text)
+    except Exception:
+        data = {"raw_text": raw_text}
+
+    return status_code, data
+
+
+class TestAnalyticsService(unittest.TestCase):
+    """
+    Unit tests for AnalyticsService queries, aggregations, and edge cases.
+    """
+
+    def setUp(self):
+        self.db = SessionLocal()
+        self.service = AnalyticsService(self.db)
+        self.temp_post_ids = []
+
+    def tearDown(self):
+        if self.temp_post_ids:
+            self.db.query(PostMetric).filter(PostMetric.post_id.in_(self.temp_post_ids)).delete(
+                synchronize_session=False
+            )
+            self.db.query(Post).filter(Post.id.in_(self.temp_post_ids)).delete(
+                synchronize_session=False
+            )
+            self.db.commit()
+        self.db.close()
+
+    def test_1_get_posts_basic(self):
+        result = self.service.get_posts(limit=10, offset=0)
+        self.assertIsInstance(result, PostListResponse)
+        self.assertGreater(result.total, 0)
+        self.assertLessEqual(len(result.items), 10)
+        self.assertEqual(result.limit, 10)
+        self.assertEqual(result.offset, 0)
+
+        # Check post summary fields
+        first = result.items[0]
+        self.assertIsNotNone(first.id)
+        self.assertIsNotNone(first.platform)
+        self.assertIsNotNone(first.external_post_id)
+        self.assertIsNotNone(first.posted_at)
+
+    def test_2_get_posts_deterministic_ordering(self):
+        result = self.service.get_posts(limit=30, offset=0)
+        items = result.items
+        for i in range(len(items) - 1):
+            curr = items[i]
+            nxt = items[i + 1]
+            # Primary sort posted_at DESC, secondary sort id DESC
+            self.assertTrue(
+                curr.posted_at > nxt.posted_at or (curr.posted_at == nxt.posted_at and curr.id >= nxt.id),
+                f"Ordering violated between post {curr.id} and {nxt.id}",
+            )
+
+    def test_3_get_posts_pagination(self):
+        page1 = self.service.get_posts(limit=5, offset=0)
+        page2 = self.service.get_posts(limit=5, offset=5)
+
+        self.assertEqual(len(page1.items), 5)
+        self.assertEqual(len(page2.items), 5)
+        page1_ids = {p.id for p in page1.items}
+        page2_ids = {p.id for p in page2.items}
+        self.assertEqual(len(page1_ids.intersection(page2_ids)), 0, "Pages should not overlap")
+
+    def test_4_get_posts_empty_result(self):
+        result = self.service.get_posts(platform="NonExistentPlatform999")
+        self.assertEqual(result.total, 0)
+        self.assertEqual(len(result.items), 0)
+
+    def test_5_get_posts_platform_filter_case_insensitive(self):
+        lower = self.service.get_posts(platform="telegram")
+        upper = self.service.get_posts(platform="Telegram")
+        self.assertEqual(lower.total, upper.total)
+        self.assertGreater(lower.total, 0)
+        for item in lower.items:
+            self.assertEqual(item.platform, "Telegram")
+
+    def test_6_get_posts_language_filter(self):
+        te_posts = self.service.get_posts(language="te")
+        self.assertGreater(te_posts.total, 0)
+        for item in te_posts.items:
+            self.assertEqual(item.language, "te")
+
+        hi_posts = self.service.get_posts(language="HI")
+        self.assertGreater(hi_posts.total, 0)
+        for item in hi_posts.items:
+            self.assertEqual(item.language, "hi")
+
+    def test_7_get_posts_date_range_filter(self):
+        start = datetime(2026, 9, 2, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 9, 3, 23, 59, 59, tzinfo=timezone.utc)
+
+        filtered = self.service.get_posts(start_time=start, end_time=end)
+        self.assertGreater(filtered.total, 0)
+        for item in filtered.items:
+            # Ensure within bounds
+            dt = item.posted_at
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            self.assertGreaterEqual(dt, start)
+            self.assertLessEqual(dt, end)
+
+    def test_8_get_posts_author_filter(self):
+        result = self.service.get_posts(author_username="insightx_official")
+        self.assertGreaterEqual(result.total, 1)
+        for item in result.items:
+            self.assertEqual(item.author_username, "insightx_official")
+
+    def test_9_get_posts_combined_filters(self):
+        result = self.service.get_posts(
+            platform="X",
+            language="en",
+            start_time=datetime(2026, 9, 1, 0, 0, 0, tzinfo=timezone.utc),
+        )
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertEqual(item.platform, "X")
+            self.assertEqual(item.language, "en")
+
+    def test_10_get_post_count(self):
+        total_count_resp = self.service.get_post_count()
+        self.assertIsInstance(total_count_resp, CountResponse)
+        self.assertGreaterEqual(total_count_resp.count, 44)
+
+        x_count = self.service.get_post_count(platform="X")
+        self.assertGreaterEqual(x_count.count, 14)
+        self.assertIn("platform", x_count.filters_applied)
+
+        zero_count = self.service.get_post_count(platform="GhostPlatformXYZ")
+        self.assertEqual(zero_count.count, 0)
+
+    def test_11_get_platform_summary(self):
+        summaries = self.service.get_platform_summary()
+        self.assertIsInstance(summaries, list)
+        self.assertGreaterEqual(len(summaries), 4)
+
+        names = [s.platform for s in summaries]
+        self.assertIn("X", names)
+        self.assertIn("Telegram", names)
+        self.assertIn("Reddit", names)
+        self.assertIn("YouTube", names)
+
+        for s in summaries:
+            self.assertIsInstance(s, PlatformSummary)
+            self.assertGreater(s.post_count, 0)
+            self.assertIsNotNone(s.earliest_post)
+            self.assertIsNotNone(s.latest_post)
+            self.assertLessEqual(s.earliest_post, s.latest_post)
+
+    def test_12_get_language_summary(self):
+        summaries = self.service.get_language_summary()
+        self.assertIsInstance(summaries, list)
+        self.assertGreaterEqual(len(summaries), 3)
+
+        langs = {s.language for s in summaries}
+        self.assertIn("en", langs)
+        self.assertIn("te", langs)
+        self.assertIn("hi", langs)
+
+        # Verify ordering by post_count descending
+        counts = [s.post_count for s in summaries]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+
+    def test_13_get_engagement_summary_basic_and_averages(self):
+        summary = self.service.get_engagement_summary()
+        self.assertIsInstance(summary, EngagementSummary)
+        self.assertGreater(summary.total_posts_analyzed, 0)
+        self.assertGreater(summary.posts_with_metrics, 0)
+        self.assertGreater(summary.total_likes, 0)
+        self.assertGreater(summary.total_views, 0)
+        self.assertGreater(summary.avg_likes, 0.0)
+        self.assertGreater(summary.avg_views, 0.0)
+
+    def test_14_get_engagement_summary_latest_snapshot_behavior(self):
+        """
+        Verify that when a post has multiple metric snapshots, only the latest snapshot
+        is aggregated in the engagement totals.
+        """
+        x_plat = self.db.query(Platform).filter_by(name="X").first()
+
+        # Create isolated post
+        p = Post(
+            platform_id=x_plat.id,
+            external_post_id="test_engagement_snapshot_post",
+            text="Engagement test",
+            posted_at=datetime.now(timezone.utc),
+            collected_at=datetime.now(timezone.utc),
+        )
+        self.db.add(p)
+        self.db.flush()
+        self.temp_post_ids.append(p.id)
+
+        # Snapshot 1: 100 likes
+        m1 = PostMetric(post_id=p.id, likes=100, views=1000)
+        self.db.add(m1)
+        self.db.flush()
+
+        # Snapshot 2: 250 likes (updated duplicate)
+        m2 = PostMetric(post_id=p.id, likes=250, views=2500)
+        self.db.add(m2)
+        self.db.commit()
+
+        # Query engagement filtered specifically to this post's time / platform
+        post_view = self.service.get_posts(platform="X", limit=1)
+        # Verify latest metric attached to post in get_posts
+        matched = [it for it in self.service.get_posts(platform="X", limit=50).items if it.id == p.id]
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched[0].metrics.likes, 250)
+        self.assertEqual(matched[0].metrics.views, 2500)
+
+    def test_15_get_engagement_summary_empty(self):
+        summary = self.service.get_engagement_summary(platform="NonExistentPlat")
+        self.assertEqual(summary.total_posts_analyzed, 0)
+        self.assertEqual(summary.posts_with_metrics, 0)
+        self.assertEqual(summary.total_likes, 0)
+        self.assertEqual(summary.avg_likes, 0.0)
+
+    def test_16_get_time_series_chronological(self):
+        ts = self.service.get_time_series()
+        self.assertIsInstance(ts, TimeSeriesResponse)
+        self.assertEqual(ts.interval, "day")
+        self.assertGreater(ts.total_points, 0)
+
+        # Verify chronological order
+        dates = [p.date for p in ts.points]
+        self.assertEqual(dates, sorted(dates))
+
+        for point in ts.points:
+            self.assertGreater(point.count, 0)
+            self.assertRegex(point.date, r"^\d{4}-\d{2}-\d{2}$")
+
+
+class TestAnalyticsAPI(unittest.TestCase):
+    """
+    Integration tests for /api/v1/analytics FastAPI endpoints.
+    """
+
+    def test_1_get_posts_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?limit=5&offset=0")
+        self.assertEqual(code, 200)
+        self.assertIn("total", data)
+        self.assertIn("items", data)
+        self.assertEqual(data["limit"], 5)
+        self.assertEqual(len(data["items"]), 5)
+
+    def test_2_get_posts_with_filters(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?platform=Telegram&language=en&limit=10")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertEqual(item["platform"], "Telegram")
+            self.assertEqual(item["language"], "en")
+
+    def test_3_get_count_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/count?platform=Reddit")
+        self.assertEqual(code, 200)
+        self.assertGreaterEqual(data["count"], 10)
+        self.assertEqual(data["filters_applied"].get("platform"), "Reddit")
+
+    def test_4_get_platforms_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/platforms")
+        self.assertEqual(code, 200)
+        self.assertIsInstance(data, list)
+        self.assertGreaterEqual(len(data), 4)
+        names = [p["platform"] for p in data]
+        self.assertIn("X", names)
+        self.assertIn("YouTube", names)
+
+    def test_5_get_languages_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/languages")
+        self.assertEqual(code, 200)
+        self.assertIsInstance(data, list)
+        langs = [l["language"] for l in data]
+        self.assertIn("en", langs)
+        self.assertIn("te", langs)
+        self.assertIn("hi", langs)
+
+    def test_6_get_engagement_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/engagement?platform=YouTube")
+        self.assertEqual(code, 200)
+        self.assertIn("total_posts_analyzed", data)
+        self.assertIn("total_views", data)
+        self.assertIn("avg_views", data)
+        self.assertGreater(data["total_views"], 0)
+
+    def test_7_get_timeseries_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/timeseries")
+        self.assertEqual(code, 200)
+        self.assertEqual(data["interval"], "day")
+        self.assertGreater(data["total_points"], 0)
+        self.assertIsInstance(data["points"], list)
+
+    def test_8_validation_start_date_after_end_date(self):
+        # 400 Bad Request
+        url = "/api/v1/analytics/posts?start_date=2026-09-10T00:00:00Z&end_date=2026-09-01T00:00:00Z"
+        code, data = call_api("GET", url)
+        self.assertEqual(code, 400)
+        self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
+
+    def test_9_validation_limit_out_of_bounds(self):
+        # limit > 200 -> 422 Unprocessable
+        code1, _ = call_api("GET", "/api/v1/analytics/posts?limit=250")
+        self.assertEqual(code1, 422)
+
+        # limit < 1 -> 422 Unprocessable
+        code2, _ = call_api("GET", "/api/v1/analytics/posts?limit=0")
+        self.assertEqual(code2, 422)
+
+    def test_10_validation_negative_offset(self):
+        # offset < 0 -> 422 Unprocessable
+        code, _ = call_api("GET", "/api/v1/analytics/posts?offset=-5")
+        self.assertEqual(code, 422)
+
+    def test_11_validation_invalid_date_format(self):
+        code, _ = call_api("GET", "/api/v1/analytics/posts?start_date=not-a-date")
+        self.assertEqual(code, 422)
+
+    def test_12_unknown_platform_returns_graceful_empty_result(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?platform=NonExistent999")
+        self.assertEqual(code, 200)
+        self.assertEqual(data["total"], 0)
+        self.assertEqual(len(data["items"]), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

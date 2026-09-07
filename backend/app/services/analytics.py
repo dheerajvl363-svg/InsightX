@@ -1,0 +1,351 @@
+from datetime import datetime, timezone
+import logging
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.models.metric import PostMetric
+from app.models.platform import Platform
+from app.models.post import Post
+from app.models.user import User
+from app.schemas.analytics import (
+    CountResponse,
+    EngagementSummary,
+    LanguageSummary,
+    PlatformSummary,
+    PostListResponse,
+    PostSummary,
+    TimeSeriesPoint,
+    TimeSeriesResponse,
+)
+from app.schemas.post import PostMetricsSchema
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize_datetime_for_db(value: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalizes datetime values before comparing with timezone-naive database columns:
+    - If timezone-aware: converts to UTC and removes tzinfo.
+    - If timezone-naive: leaves unchanged.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+class AnalyticsService:
+    """
+    Dedicated read-only query service for social-media analytics and ML/NLP pipelines.
+    Enforces deterministic querying, pagination, and multi-dimensional aggregations.
+    """
+
+    _normalize_datetime_for_db = staticmethod(_normalize_datetime_for_db)
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def _apply_filters(
+        self,
+        query,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        author_username: Optional[str] = None,
+    ):
+        """Applies standardized query filters across post queries."""
+        if platform and platform.strip():
+            query = query.join(Post.platform).filter(
+                func.lower(Platform.name) == platform.strip().lower()
+            )
+
+        if language and language.strip():
+            query = query.filter(func.lower(Post.language) == language.strip().lower())
+
+        norm_start_time = self._normalize_datetime_for_db(start_time)
+        if norm_start_time is not None:
+            query = query.filter(Post.posted_at >= norm_start_time)
+
+        norm_end_time = self._normalize_datetime_for_db(end_time)
+        if norm_end_time is not None:
+            query = query.filter(Post.posted_at <= norm_end_time)
+
+        if author_username and author_username.strip():
+            clean_user = author_username.strip().lstrip("@").lower()
+            query = query.join(Post.user).filter(func.lower(User.username) == clean_user)
+
+        return query
+
+    def get_posts(
+        self,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        author_username: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> PostListResponse:
+        """
+        Retrieves a paginated, deterministically ordered list of posts with latest metrics.
+        """
+        # Base query for counting
+        base_query = self.db.query(Post)
+        filtered_query = self._apply_filters(
+            base_query,
+            platform=platform,
+            language=language,
+            start_time=start_time,
+            end_time=end_time,
+            author_username=author_username,
+        )
+
+        total = filtered_query.count()
+
+        # Deterministic ordering and pagination
+        posts = (
+            filtered_query.order_by(Post.posted_at.desc(), Post.id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        items: List[PostSummary] = []
+        for post in posts:
+            # Retrieve latest metric snapshot if present
+            latest_metric = None
+            if post.metrics:
+                # Sort in python or pick last
+                sorted_metrics = sorted(post.metrics, key=lambda m: m.id, reverse=True)
+                latest_metric = sorted_metrics[0]
+
+            metric_schema = None
+            if latest_metric:
+                metric_schema = PostMetricsSchema(
+                    likes=latest_metric.likes or 0,
+                    comments=latest_metric.comments or 0,
+                    shares=latest_metric.shares or 0,
+                    views=latest_metric.views or 0,
+                    collected_at=latest_metric.collected_at,
+                )
+
+            items.append(
+                PostSummary(
+                    id=post.id,
+                    platform=post.platform.name if post.platform else "Unknown",
+                    external_post_id=post.external_post_id,
+                    text=post.text,
+                    author_username=post.user.username if post.user else None,
+                    author_display_name=post.user.display_name if post.user else None,
+                    posted_at=post.posted_at,
+                    collected_at=post.collected_at,
+                    url=post.url,
+                    language=post.language,
+                    metrics=metric_schema,
+                    metadata=post.post_metadata,
+                )
+            )
+
+        return PostListResponse(total=total, limit=limit, offset=offset, items=items)
+
+    def get_post_count(
+        self,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        author_username: Optional[str] = None,
+    ) -> CountResponse:
+        """Returns count of posts matching filters."""
+        query = self.db.query(Post)
+        filtered_query = self._apply_filters(
+            query,
+            platform=platform,
+            language=language,
+            start_time=start_time,
+            end_time=end_time,
+            author_username=author_username,
+        )
+
+        count = filtered_query.count()
+        applied = {
+            k: str(v)
+            for k, v in {
+                "platform": platform,
+                "language": language,
+                "start_time": start_time,
+                "end_time": end_time,
+                "author_username": author_username,
+            }.items()
+            if v is not None
+        }
+
+        return CountResponse(count=count, filters_applied=applied)
+
+    def get_engagement_summary(
+        self,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> EngagementSummary:
+        """
+        Computes aggregate engagement metrics (likes, comments, shares, views)
+        using the latest snapshot for each post.
+        """
+        # Subquery to identify the latest metric snapshot ID per post
+        latest_metric_subq = (
+            self.db.query(
+                PostMetric.post_id,
+                func.max(PostMetric.id).label("latest_metric_id"),
+            )
+            .group_by(PostMetric.post_id)
+            .subquery()
+        )
+
+        query = (
+            self.db.query(
+                func.count(Post.id).label("total_posts"),
+                func.count(PostMetric.id).label("posts_with_metrics"),
+                func.coalesce(func.sum(PostMetric.likes), 0).label("total_likes"),
+                func.coalesce(func.sum(PostMetric.comments), 0).label("total_comments"),
+                func.coalesce(func.sum(PostMetric.shares), 0).label("total_shares"),
+                func.coalesce(func.sum(PostMetric.views), 0).label("total_views"),
+            )
+            .outerjoin(latest_metric_subq, Post.id == latest_metric_subq.c.post_id)
+            .outerjoin(PostMetric, PostMetric.id == latest_metric_subq.c.latest_metric_id)
+        )
+
+        filtered_query = self._apply_filters(
+            query,
+            platform=platform,
+            language=language,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        row = filtered_query.first()
+        total_posts = row.total_posts if row else 0
+        posts_with_metrics = row.posts_with_metrics if row else 0
+        total_likes = int(row.total_likes) if row else 0
+        total_comments = int(row.total_comments) if row else 0
+        total_shares = int(row.total_shares) if row else 0
+        total_views = int(row.total_views) if row else 0
+
+        # Calculate averages based on analyzed posts
+        divisor = float(total_posts) if total_posts > 0 else 1.0
+        avg_likes = round(total_likes / divisor, 2)
+        avg_comments = round(total_comments / divisor, 2)
+        avg_shares = round(total_shares / divisor, 2)
+        avg_views = round(total_views / divisor, 2)
+
+        return EngagementSummary(
+            total_posts_analyzed=total_posts,
+            posts_with_metrics=posts_with_metrics,
+            total_likes=total_likes,
+            total_comments=total_comments,
+            total_shares=total_shares,
+            total_views=total_views,
+            avg_likes=avg_likes,
+            avg_comments=avg_comments,
+            avg_shares=avg_shares,
+            avg_views=avg_views,
+        )
+
+    def get_platform_summary(self) -> List[PlatformSummary]:
+        """
+        Returns post count and chronological bounds grouped by platform.
+        """
+        results = (
+            self.db.query(
+                Platform.name,
+                func.count(Post.id).label("post_count"),
+                func.min(Post.posted_at).label("earliest_post"),
+                func.max(Post.posted_at).label("latest_post"),
+            )
+            .outerjoin(Post, Post.platform_id == Platform.id)
+            .group_by(Platform.name)
+            .order_by(func.count(Post.id).desc())
+            .all()
+        )
+
+        return [
+            PlatformSummary(
+                platform=row.name,
+                post_count=row.post_count,
+                earliest_post=row.earliest_post,
+                latest_post=row.latest_post,
+            )
+            for row in results
+        ]
+
+    def get_language_summary(self) -> List[LanguageSummary]:
+        """
+        Returns post count grouped by language.
+        """
+        results = (
+            self.db.query(
+                func.coalesce(Post.language, "unspecified").label("lang"),
+                func.count(Post.id).label("post_count"),
+            )
+            .group_by(func.coalesce(Post.language, "unspecified"))
+            .order_by(func.count(Post.id).desc())
+            .all()
+        )
+
+        return [
+            LanguageSummary(
+                language=row.lang,
+                post_count=row.post_count,
+            )
+            for row in results
+        ]
+
+    def get_time_series(
+        self,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> TimeSeriesResponse:
+        """
+        Aggregates daily post counts chronologically.
+        """
+        day_expr = func.date(Post.posted_at)
+
+        query = self.db.query(
+            day_expr.label("day"),
+            func.count(Post.id).label("count"),
+        )
+
+        filtered_query = self._apply_filters(
+            query,
+            platform=platform,
+            language=language,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        rows = (
+            filtered_query.group_by(day_expr)
+            .order_by(day_expr.asc())
+            .all()
+        )
+
+        points = [
+            TimeSeriesPoint(
+                date=str(row.day),
+                count=row.count,
+            )
+            for row in rows
+        ]
+
+        return TimeSeriesResponse(
+            interval="day",
+            total_points=len(points),
+            points=points,
+        )
