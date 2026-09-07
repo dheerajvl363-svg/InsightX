@@ -331,6 +331,167 @@ class TestAnalyticsService(unittest.TestCase):
         self.assertIn("search", count_resp.filters_applied)
         self.assertEqual(count_resp.filters_applied["search"], "InsightX")
 
+    # --- Component 8.2: Engagement filtering ---
+
+    def test_23_min_likes_filter(self):
+        result = self.service.get_posts(min_likes=1)
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.likes, 1)
+
+    def test_24_min_comments_filter(self):
+        result = self.service.get_posts(min_comments=1)
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.comments, 1)
+
+    def test_25_min_shares_filter(self):
+        result = self.service.get_posts(min_shares=1)
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.shares, 1)
+
+    def test_26_min_views_filter(self):
+        result = self.service.get_posts(min_views=1)
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.views, 1)
+
+    def test_27_high_threshold_returns_empty(self):
+        result = self.service.get_posts(min_likes=999_999_999)
+        self.assertEqual(result.total, 0)
+
+    def test_28_multiple_engagement_filters_combined(self):
+        result = self.service.get_posts(min_likes=1, min_views=1)
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.likes, 1)
+            self.assertGreaterEqual(item.metrics.views, 1)
+
+    def test_29_engagement_filter_with_platform(self):
+        result = self.service.get_posts(min_likes=1, platform="YouTube")
+        self.assertGreater(result.total, 0)
+        for item in result.items:
+            self.assertEqual(item.platform, "YouTube")
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.likes, 1)
+
+    def test_30_engagement_filter_with_search(self):
+        result = self.service.get_posts(min_views=1, search="infrastructure")
+        for item in result.items:
+            self.assertIn("infrastructure", item.text.lower())
+            self.assertIsNotNone(item.metrics)
+            self.assertGreaterEqual(item.metrics.views, 1)
+
+    def test_31_count_with_engagement_filter(self):
+        count_all = self.service.get_post_count()
+        count_engaged = self.service.get_post_count(min_likes=1)
+        self.assertGreater(count_all.count, 0)
+        self.assertGreater(count_engaged.count, 0)
+        self.assertLessEqual(count_engaged.count, count_all.count)
+        self.assertIn("min_likes", count_engaged.filters_applied)
+
+    def test_32_zero_threshold_is_same_as_no_filter(self):
+        all_posts = self.service.get_post_count()
+        zero_likes = self.service.get_post_count(min_likes=0)
+        # min_likes=0 should match all posts (0 >= 0 always true after COALESCE)
+        self.assertEqual(all_posts.count, zero_likes.count)
+
+    def test_33_engagement_filter_uses_chronological_collected_at(self):
+        # Create a test post
+        post = Post(
+            platform_id=1,
+            external_post_id="chronological_metric_test_1",
+            text="Chronological metric snapshot test post",
+            posted_at=datetime(2026, 9, 1, 12, 0, 0),
+            collected_at=datetime(2026, 9, 1, 12, 0, 0),
+            language="en",
+        )
+        self.db.add(post)
+        self.db.commit()
+        self.temp_post_ids.append(post.id)
+
+        # Snapshot 1: older collected_at, but inserted first (lower ID)
+        m1 = PostMetric(
+            post_id=post.id,
+            collected_at=datetime(2026, 9, 1, 10, 0, 0),
+            likes=1000,
+            comments=0,
+            shares=0,
+            views=0,
+        )
+        # Snapshot 2: newer collected_at, inserted second (higher ID) with lower likes
+        m2 = PostMetric(
+            post_id=post.id,
+            collected_at=datetime(2026, 9, 2, 10, 0, 0),
+            likes=50,
+            comments=0,
+            shares=0,
+            views=0,
+        )
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        # The latest metric is m2 (likes=50) based on collected_at.
+        # Filtering with min_likes=500 should NOT include this post.
+        res_high = self.service.get_posts(search="Chronological metric snapshot test post", min_likes=500)
+        self.assertEqual(res_high.total, 0)
+
+        # Filtering with min_likes=50 SHOULD include this post.
+        res_low = self.service.get_posts(search="Chronological metric snapshot test post", min_likes=50)
+        self.assertEqual(res_low.total, 1)
+        self.assertEqual(res_low.items[0].metrics.likes, 50)
+
+    def test_34_engagement_filter_deterministic_id_tie_breaker(self):
+        # Create a test post
+        post = Post(
+            platform_id=1,
+            external_post_id="tie_breaker_metric_test_1",
+            text="Tie breaker metric snapshot test post",
+            posted_at=datetime(2026, 9, 1, 12, 0, 0),
+            collected_at=datetime(2026, 9, 1, 12, 0, 0),
+            language="en",
+        )
+        self.db.add(post)
+        self.db.commit()
+        self.temp_post_ids.append(post.id)
+
+        same_time = datetime(2026, 9, 5, 12, 0, 0)
+        m1 = PostMetric(
+            post_id=post.id,
+            collected_at=same_time,
+            likes=100,
+            comments=0,
+            shares=0,
+            views=0,
+        )
+        self.db.add(m1)
+        self.db.commit()
+
+        m2 = PostMetric(
+            post_id=post.id,
+            collected_at=same_time,
+            likes=300,
+            comments=0,
+            shares=0,
+            views=0,
+        )
+        self.db.add(m2)
+        self.db.commit()
+
+        # With equal collected_at, the higher id (m2 with likes=300) should be selected
+        res = self.service.get_posts(search="Tie breaker metric snapshot test post", min_likes=200)
+        self.assertEqual(res.total, 1)
+        self.assertEqual(res.items[0].metrics.likes, 300)
+
+        res_too_high = self.service.get_posts(search="Tie breaker metric snapshot test post", min_likes=400)
+        self.assertEqual(res_too_high.total, 0)
+
 
 class TestAnalyticsAPI(unittest.TestCase):
     """
@@ -464,6 +625,93 @@ class TestAnalyticsAPI(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertGreater(data["count"], 0)
         self.assertEqual(data["filters_applied"].get("search"), "InsightX")
+
+    # --- Component 8.2: Engagement filtering API tests ---
+
+    def test_19_min_likes_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_likes=1")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["likes"], 1)
+
+    def test_20_min_comments_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_comments=1")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["comments"], 1)
+
+    def test_21_min_shares_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_shares=1")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["shares"], 1)
+
+    def test_22_min_views_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_views=1")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["views"], 1)
+
+    def test_23_high_threshold_empty(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_likes=999999999")
+        self.assertEqual(code, 200)
+        self.assertEqual(data["total"], 0)
+
+    def test_24_multiple_engagement_filters(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_likes=1&min_views=1")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["likes"], 1)
+            self.assertGreaterEqual(item["metrics"]["views"], 1)
+
+    def test_25_engagement_with_platform(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_likes=1&platform=YouTube")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["total"], 0)
+        for item in data["items"]:
+            self.assertEqual(item["platform"], "YouTube")
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["likes"], 1)
+
+    def test_26_engagement_with_search(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?min_views=1&search=infrastructure")
+        self.assertEqual(code, 200)
+        for item in data["items"]:
+            self.assertIn("infrastructure", item["text"].lower())
+            self.assertIsNotNone(item["metrics"])
+            self.assertGreaterEqual(item["metrics"]["views"], 1)
+
+    def test_27_count_with_engagement_filter(self):
+        code, data = call_api("GET", "/api/v1/analytics/count?min_likes=1")
+        self.assertEqual(code, 200)
+        self.assertGreater(data["count"], 0)
+        self.assertIn("min_likes", data["filters_applied"])
+
+    def test_28_negative_min_likes_rejected(self):
+        code, _ = call_api("GET", "/api/v1/analytics/posts?min_likes=-1")
+        self.assertEqual(code, 422)
+
+    def test_29_negative_min_comments_rejected(self):
+        code, _ = call_api("GET", "/api/v1/analytics/posts?min_comments=-5")
+        self.assertEqual(code, 422)
+
+    def test_30_negative_min_shares_rejected(self):
+        code, _ = call_api("GET", "/api/v1/analytics/posts?min_shares=-1")
+        self.assertEqual(code, 422)
+
+    def test_31_negative_min_views_rejected(self):
+        code, _ = call_api("GET", "/api/v1/analytics/posts?min_views=-100")
+        self.assertEqual(code, 422)
 
 
 if __name__ == "__main__":

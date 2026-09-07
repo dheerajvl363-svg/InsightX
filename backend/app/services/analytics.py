@@ -48,6 +48,41 @@ class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _latest_metric_subquery(self):
+        """
+        Builds a subquery that, for each post, surfaces the latest metric snapshot's
+        likes/comments/shares/views based on collected_at (with id as tie-breaker),
+        defaulting nulls to 0 via COALESCE.
+        Used for engagement filtering.
+        """
+        ranked_metrics = (
+            self.db.query(
+                PostMetric.post_id.label("post_id"),
+                func.coalesce(PostMetric.likes, 0).label("likes"),
+                func.coalesce(PostMetric.comments, 0).label("comments"),
+                func.coalesce(PostMetric.shares, 0).label("shares"),
+                func.coalesce(PostMetric.views, 0).label("views"),
+                func.row_number()
+                .over(
+                    partition_by=PostMetric.post_id,
+                    order_by=(PostMetric.collected_at.desc(), PostMetric.id.desc()),
+                )
+                .label("rn"),
+            )
+            .subquery()
+        )
+        return (
+            self.db.query(
+                ranked_metrics.c.post_id,
+                ranked_metrics.c.likes,
+                ranked_metrics.c.comments,
+                ranked_metrics.c.shares,
+                ranked_metrics.c.views,
+            )
+            .filter(ranked_metrics.c.rn == 1)
+            .subquery()
+        )
+
     def _apply_filters(
         self,
         query,
@@ -57,6 +92,10 @@ class AnalyticsService:
         end_time: Optional[datetime] = None,
         author_username: Optional[str] = None,
         search: Optional[str] = None,
+        min_likes: Optional[int] = None,
+        min_comments: Optional[int] = None,
+        min_shares: Optional[int] = None,
+        min_views: Optional[int] = None,
     ):
         """Applies standardized query filters across post queries."""
         if platform and platform.strip():
@@ -82,6 +121,30 @@ class AnalyticsService:
         if search and search.strip():
             query = query.filter(Post.text.ilike(f"%{search.strip()}%"))
 
+        # Engagement filters — join latest-metric subquery only when needed
+        engagement_requested = any(
+            v is not None for v in (min_likes, min_comments, min_shares, min_views)
+        )
+        if engagement_requested:
+            metric_sq = self._latest_metric_subquery()
+            query = query.outerjoin(metric_sq, Post.id == metric_sq.c.post_id)
+            if min_likes is not None:
+                query = query.filter(
+                    func.coalesce(metric_sq.c.likes, 0) >= min_likes
+                )
+            if min_comments is not None:
+                query = query.filter(
+                    func.coalesce(metric_sq.c.comments, 0) >= min_comments
+                )
+            if min_shares is not None:
+                query = query.filter(
+                    func.coalesce(metric_sq.c.shares, 0) >= min_shares
+                )
+            if min_views is not None:
+                query = query.filter(
+                    func.coalesce(metric_sq.c.views, 0) >= min_views
+                )
+
         return query
 
     def get_posts(
@@ -92,6 +155,10 @@ class AnalyticsService:
         end_time: Optional[datetime] = None,
         author_username: Optional[str] = None,
         search: Optional[str] = None,
+        min_likes: Optional[int] = None,
+        min_comments: Optional[int] = None,
+        min_shares: Optional[int] = None,
+        min_views: Optional[int] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> PostListResponse:
@@ -108,6 +175,10 @@ class AnalyticsService:
             end_time=end_time,
             author_username=author_username,
             search=search,
+            min_likes=min_likes,
+            min_comments=min_comments,
+            min_shares=min_shares,
+            min_views=min_views,
         )
 
         total = filtered_query.count()
@@ -125,8 +196,15 @@ class AnalyticsService:
             # Retrieve latest metric snapshot if present
             latest_metric = None
             if post.metrics:
-                # Sort in python or pick last
-                sorted_metrics = sorted(post.metrics, key=lambda m: m.id, reverse=True)
+                # Sort by collected_at descending, tie-breaking by id descending
+                sorted_metrics = sorted(
+                    post.metrics,
+                    key=lambda m: (
+                        m.collected_at if m.collected_at is not None else datetime.min,
+                        m.id if m.id is not None else 0,
+                    ),
+                    reverse=True,
+                )
                 latest_metric = sorted_metrics[0]
 
             metric_schema = None
@@ -166,6 +244,10 @@ class AnalyticsService:
         end_time: Optional[datetime] = None,
         author_username: Optional[str] = None,
         search: Optional[str] = None,
+        min_likes: Optional[int] = None,
+        min_comments: Optional[int] = None,
+        min_shares: Optional[int] = None,
+        min_views: Optional[int] = None,
     ) -> CountResponse:
         """Returns count of posts matching filters."""
         query = self.db.query(Post)
@@ -177,6 +259,10 @@ class AnalyticsService:
             end_time=end_time,
             author_username=author_username,
             search=search,
+            min_likes=min_likes,
+            min_comments=min_comments,
+            min_shares=min_shares,
+            min_views=min_views,
         )
 
         count = filtered_query.count()
@@ -189,6 +275,10 @@ class AnalyticsService:
                 "end_time": end_time,
                 "author_username": author_username,
                 "search": search,
+                "min_likes": min_likes,
+                "min_comments": min_comments,
+                "min_shares": min_shares,
+                "min_views": min_views,
             }.items()
             if v is not None
         }

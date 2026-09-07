@@ -43,6 +43,10 @@ def get_posts(
     end_date: Optional[datetime] = Query(None, description="Filter posts on or before this timestamp"),
     author: Optional[str] = Query(None, description="Filter by author username/handle"),
     search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    min_likes: Optional[int] = Query(None, ge=0, description="Minimum likes (latest metric snapshot)"),
+    min_comments: Optional[int] = Query(None, ge=0, description="Minimum comments (latest metric snapshot)"),
+    min_shares: Optional[int] = Query(None, ge=0, description="Minimum shares (latest metric snapshot)"),
+    min_views: Optional[int] = Query(None, ge=0, description="Minimum views (latest metric snapshot)"),
     limit: int = Query(50, ge=1, le=200, description="Max posts to return (1-200)"),
     offset: int = Query(0, ge=0, description="Offset position for pagination"),
     db: Session = Depends(get_db),
@@ -57,6 +61,10 @@ def get_posts(
             end_time=end_date,
             author_username=author,
             search=search,
+            min_likes=min_likes,
+            min_comments=min_comments,
+            min_shares=min_shares,
+            min_views=min_views,
             limit=limit,
             offset=offset,
         )
@@ -81,6 +89,10 @@ def get_count(
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     author: Optional[str] = Query(None, description="Filter by author username"),
     search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    min_likes: Optional[int] = Query(None, ge=0, description="Minimum likes (latest metric snapshot)"),
+    min_comments: Optional[int] = Query(None, ge=0, description="Minimum comments (latest metric snapshot)"),
+    min_shares: Optional[int] = Query(None, ge=0, description="Minimum shares (latest metric snapshot)"),
+    min_views: Optional[int] = Query(None, ge=0, description="Minimum views (latest metric snapshot)"),
     db: Session = Depends(get_db),
 ) -> CountResponse:
     validate_date_range(start_date, end_date)
@@ -93,6 +105,10 @@ def get_count(
             end_time=end_date,
             author_username=author,
             search=search,
+            min_likes=min_likes,
+            min_comments=min_comments,
+            min_shares=min_shares,
+            min_views=min_views,
         )
     except Exception as e:
         logger.error(f"Error counting posts: {e}", exc_info=True)
