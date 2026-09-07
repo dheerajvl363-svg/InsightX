@@ -1,9 +1,10 @@
+from app.schemas.platform import PlatformResponse
 from app.schemas.post import (
-    RawPostPayload,
-    PostMetricsSchema,
-    NormalizedPost,
-    IngestionResponse,
     BatchIngestionResponse,
+    IngestionResponse,
+    NormalizedPost,
+    PostMetricsSchema,
+    RawPostPayload,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "NormalizedPost",
     "IngestionResponse",
     "BatchIngestionResponse",
+    "PlatformResponse",
 ]
