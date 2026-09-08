@@ -51,51 +51,18 @@ def validate_date_range(start: Optional[datetime], end: Optional[datetime]):
         )
 
 
-def validate_sort_params(sort_by: Optional[str], order: Optional[str]) -> tuple[str, str]:
-    """Helper to validate sort_by and order query parameters."""
-    clean_sort_by = (sort_by or "posted_at").strip().lower()
-    if clean_sort_by not in ALLOWED_SORT_BY:
+def validate_sort_parameters(
+    sort_by: Optional[str],
+    order: Optional[str],
+    allowed_fields: set[str],
+    default_sort_by: str = "posted_at",
+) -> tuple[str, str]:
+    """Helper to validate sort_by and order query parameters against an allowed field set."""
+    clean_sort_by = (sort_by or default_sort_by).strip().lower()
+    if clean_sort_by not in allowed_fields:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_SORT_BY))}.",
-        )
-
-    clean_order = (order or "desc").strip().lower()
-    if clean_order not in ALLOWED_ORDER:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid order '{order}'. Supported orders: {', '.join(sorted(ALLOWED_ORDER))}.",
-        )
-
-    return clean_sort_by, clean_order
-
-
-def validate_author_sort_params(sort_by: Optional[str], order: Optional[str]) -> tuple[str, str]:
-    """Helper to validate author sort_by and order query parameters."""
-    clean_sort_by = (sort_by or "post_count").strip().lower()
-    if clean_sort_by not in ALLOWED_AUTHOR_SORT_BY:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_AUTHOR_SORT_BY))}.",
-        )
-
-    clean_order = (order or "desc").strip().lower()
-    if clean_order not in ALLOWED_ORDER:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid order '{order}'. Supported orders: {', '.join(sorted(ALLOWED_ORDER))}.",
-        )
-
-    return clean_sort_by, clean_order
-
-
-def validate_topic_sort_params(sort_by: Optional[str], order: Optional[str]) -> tuple[str, str]:
-    """Helper to validate topic sort_by and order query parameters."""
-    clean_sort_by = (sort_by or "post_count").strip().lower()
-    if clean_sort_by not in ALLOWED_TOPIC_SORT_BY:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_TOPIC_SORT_BY))}.",
+            detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(allowed_fields))}.",
         )
 
     clean_order = (order or "desc").strip().lower()
@@ -132,7 +99,7 @@ def get_posts(
     db: Session = Depends(get_db),
 ) -> PostListResponse:
     validate_date_range(start_date, end_date)
-    clean_sort_by, clean_order = validate_sort_params(sort_by, order)
+    clean_sort_by, clean_order = validate_sort_parameters(sort_by, order, ALLOWED_SORT_BY, default_sort_by="posted_at")
     try:
         service = AnalyticsService(db)
         return service.get_posts(
@@ -200,6 +167,13 @@ def get_count(
             min_shares=min_shares,
             min_views=min_views,
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Error counting posts: {e}", exc_info=True)
         raise HTTPException(
@@ -218,6 +192,13 @@ def get_platform_summary(db: Session = Depends(get_db)) -> List[PlatformSummary]
     try:
         service = AnalyticsService(db)
         return service.get_platform_summary()
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Error retrieving platform summary: {e}", exc_info=True)
         raise HTTPException(
@@ -236,6 +217,13 @@ def get_language_summary(db: Session = Depends(get_db)) -> List[LanguageSummary]
     try:
         service = AnalyticsService(db)
         return service.get_language_summary()
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Error retrieving language summary: {e}", exc_info=True)
         raise HTTPException(
@@ -266,6 +254,13 @@ def get_engagement_summary(
             start_time=start_date,
             end_time=end_date,
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Error calculating engagement summary: {e}", exc_info=True)
         raise HTTPException(
@@ -295,6 +290,13 @@ def get_timeseries(
             language=language,
             start_time=start_date,
             end_time=end_date,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
     except Exception as e:
         logger.error(f"Error generating time-series: {e}", exc_info=True)
@@ -330,6 +332,13 @@ def get_engagement_timeseries(
             start_date=start_date,
             end_date=end_date,
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Error generating engagement time-series: {e}", exc_info=True)
         raise HTTPException(
@@ -357,7 +366,7 @@ def get_authors(
     db: Session = Depends(get_db),
 ) -> AuthorListResponse:
     validate_date_range(start_date, end_date)
-    clean_sort_by, clean_order = validate_author_sort_params(sort_by, order)
+    clean_sort_by, clean_order = validate_sort_parameters(sort_by, order, ALLOWED_AUTHOR_SORT_BY, default_sort_by="post_count")
     try:
         service = AnalyticsService(db)
         return service.get_author_summary(
@@ -405,7 +414,7 @@ def get_topics(
     db: Session = Depends(get_db),
 ) -> TopicListResponse:
     validate_date_range(start_date, end_date)
-    clean_sort_by, clean_order = validate_topic_sort_params(sort_by, order)
+    clean_sort_by, clean_order = validate_sort_parameters(sort_by, order, ALLOWED_TOPIC_SORT_BY, default_sort_by="post_count")
     try:
         service = AnalyticsService(db)
         return service.get_topic_summary(

@@ -2087,6 +2087,51 @@ class TestAnalyticsAPI(unittest.TestCase):
         self.assertEqual(code, 400)
         self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
 
+    # --- Component 9: API Hardening Tests ---
+
+    def test_53_count_endpoint_invalid_date_range_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/count?start_date=2026-12-01T00:00:00&end_date=2026-01-01T00:00:00")
+        self.assertEqual(code, 400)
+        self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
+
+    def test_54_engagement_endpoint_invalid_date_range_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/engagement?start_date=2026-12-01T00:00:00&end_date=2026-01-01T00:00:00")
+        self.assertEqual(code, 400)
+        self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
+
+    def test_55_timeseries_endpoint_invalid_date_range_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/timeseries?start_date=2026-12-01T00:00:00&end_date=2026-01-01T00:00:00")
+        self.assertEqual(code, 400)
+        self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
+
+    def test_56_unified_sort_validator_consistency(self):
+        # Posts sort_by / order
+        code, data = call_api("GET", "/api/v1/analytics/posts?sort_by=nonexistent_field")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid sort_by", data.get("detail", ""))
+
+        code, data = call_api("GET", "/api/v1/analytics/posts?order=invalid_dir")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid order", data.get("detail", ""))
+
+        # Authors sort_by / order
+        code, data = call_api("GET", "/api/v1/analytics/authors?sort_by=nonexistent_field")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid sort_by", data.get("detail", ""))
+
+        code, data = call_api("GET", "/api/v1/analytics/authors?order=invalid_dir")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid order", data.get("detail", ""))
+
+        # Topics sort_by / order
+        code, data = call_api("GET", "/api/v1/analytics/topics?sort_by=nonexistent_field")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid sort_by", data.get("detail", ""))
+
+        code, data = call_api("GET", "/api/v1/analytics/topics?order=invalid_dir")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid order", data.get("detail", ""))
+
 
 if __name__ == "__main__":
     unittest.main()
