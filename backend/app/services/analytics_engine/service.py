@@ -143,6 +143,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         # 1. Engagement Analytics
         engagement_breakdown = self.engagement_engine.calculate_engagement(posts)
         platform_breakdown = self.engagement_engine.calculate_platform_breakdown(posts)
+        detailed_engagement = self.engagement_engine.generate_detailed_report(posts)
 
         # 2. Time-Series Dynamics
         temporal_dynamics = self.time_series_engine.generate_time_series(
@@ -186,5 +187,6 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             temporal_dynamics=temporal_dynamics,
             narratives=narratives,
             platform_breakdown=platform_breakdown,
+            detailed_engagement=detailed_engagement,
             summary_insights=summary_insights,
         )

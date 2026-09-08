@@ -8,9 +8,9 @@ While Phase 3 provides atomic NLP inferences (sentiment, emotion, topic clusters
 
 ---
 
-## 2. Phase 4.1 Analytics Engine Architecture
+## 2. Analytics Engine Architecture (Phase 4.1 & Phase 4.2)
 
-The Analytics Engine is structured into four core decoupled components orchestrated by `AnalyticsEngineService`:
+The Analytics Engine is structured into decoupled, modular components orchestrated by `AnalyticsEngineService`:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -22,14 +22,16 @@ The Analytics Engine is structured into four core decoupled components orchestra
 ┌──────────────┐             ┌──────────────┐             ┌──────────────┐
 │  Engagement  │             │ Time-Series  │             │  Narrative   │
 │    Engine    │             │   Dynamics   │             │   Dynamics   │
-│ (4.1 Module) │             │ (4.1 Module) │             │ (4.1 Module) │
+│ (Phase 4.2)  │             │ (Phase 4.1)  │             │ (Phase 4.1)  │
 └──────────────┘             └──────────────┘             └──────────────┘
        │                            │                            │
        │ • Weighted score           │ • Interval bucketing       │ • Lifecycle stages
-       │ • Virality index           │ • k-period rolling avg     │ • Velocity & accel.
+       │ • Virality & Amplification │ • k-period rolling avg     │ • Velocity & accel.
        │ • Discussion depth         │ • Peak & anomaly z-score   │ • Sentiment drift
-       │ • Platform breakdown       │ • Net sentiment track      │ • Topic trajectories
-       └────────────────────────────┼────────────────────────────┘
+       │ • Statistical distribution │ • Net sentiment track      │ • Topic trajectories
+       │ • Outlier post detection   └─────────────┬──────────────┘
+       │ • Platform benchmarking                  │
+       └────────────────────────────┬─────────────┘
                                     ↓
                  ┌──────────────────────────────────────┐
                  │       AnalyticsEngineService         │
@@ -46,19 +48,34 @@ The Analytics Engine is structured into four core decoupled components orchestra
 
 ## 3. Mathematical Foundations & Metrics
 
-### 3.1 Engagement & Virality Formulation
+### 3.1 Engagement & Virality Formulation (Phase 4.2)
+
 - **Weighted Engagement Score ($E$)**:
   $$E = (likes \times 1.0) + (comments \times 2.0) + (shares \times 3.0)$$
 - **Virality Index ($V$)**:
   $$V = \frac{total\_shares}{\max(total\_likes, 1)}$$
+- **Amplification Rate ($AR$)**:
+  $$AR = \frac{total\_shares}{\max(total\_interactions, 1)} \quad \text{where } total\_interactions = likes + comments + shares$$
 - **Discussion Depth ($D$)**:
   $$D = \frac{total\_comments}{\max(total\_likes, 1)}$$
+- **Conversation Rate ($CR$)**:
+  $$CR = \frac{total\_comments}{\max(total\_interactions, 1)}$$
 - **Engagement Rate per Impression ($ER$)**:
   $$ER = \frac{total\_likes + total\_comments + total\_shares}{\max(total\_views, 1)} \quad (\text{when } total\_views > 0)$$
 - **Average Post Engagement ($\overline{E}$)**:
   $$\overline{E} = \frac{E}{total\_posts}$$
+- **Statistical Distribution of Engagement Scores**:
+  - Minimum, Maximum, Mean ($\mu$), Median, Standard Deviation ($\sigma$), $25^{\text{th}}$ percentile ($Q_1$), $75^{\text{th}}$ percentile ($Q_3$).
+- **Outlier Post Detection**:
+  $$\text{Threshold}_{outlier} = \mu_{E} + (k \cdot \sigma_{E}) \quad (\text{default } k = 2.0\sigma)$$
+- **Cross-Platform Benchmarking**:
+  - $\text{Post Share \%} = \frac{N_{platform}}{N_{total}} \times 100$
+  - $\text{Engagement Share \%} = \frac{E_{platform}}{E_{total}} \times 100$
+  - Efficiency Ranking: Ordered rank by $\overline{E}_{platform}$ descending (Rank 1 = most engaging platform).
 
-### 3.2 Time-Series & Temporal Dynamics
+---
+
+### 3.2 Time-Series & Temporal Dynamics (Phase 4.1)
 - **Interval Granularities**: `hour`, `day`, `week` (floored to UTC boundaries).
 - **Rolling Moving Average ($\text{RMA}_k$)**:
   $$\text{RMA}_k(i) = \frac{1}{\min(i+1, k)} \sum_{j=\max(0, i-k+1)}^{i} \text{metric}(j)$$
@@ -66,7 +83,9 @@ The Analytics Engine is structured into four core decoupled components orchestra
   $$z_i = \frac{volume_i - \mu_{volume}}{\sigma_{volume}}$$
   An interval is flagged as an anomaly when $z_i \ge \text{threshold}$ (default: $2.0\sigma$).
 
-### 3.3 Narrative Lifecycle State Machine
+---
+
+### 3.3 Narrative Lifecycle State Machine (Phase 4.1)
 Topics and discussion threads progress across deterministic lifecycle stages based on temporal volume velocity ($v = \text{vol}_{curr} - \text{vol}_{prev}$) and acceleration ($a = v - \text{vol}_{prev}$):
 
 | Lifecycle Stage | Condition | Description |
@@ -88,6 +107,13 @@ Topics and discussion threads progress across deterministic lifecycle stages bas
 - `IntervalUnit`: Enum (`hour`, `day`, `week`).
 - `NarrativeLifecycleStage`: Enum (`emerging`, `accelerating`, `peak`, `sustained`, `decaying`, `dormant`).
 - `EngagementScoreBreakdown`: Aggregated engagement counters, weighted scores, virality ratio, conversation depth, and impression rate.
+- `EngagementDistribution`: Statistical score distribution (`min`, `max`, `mean`, `median`, `std_dev`, `p25`, `p75`).
+- `PostEngagementProfile`: Individual post scorecard with engagement rates and outlier detection.
+- `ViralityAnalytics`: Content amplification rate and count of high-virality posts.
+- `DiscussionDepthAnalytics`: Conversational depth rate and count of active discussion threads.
+- `PlatformEngagementComparison`: Cross-platform metrics, volume/engagement share %, and efficiency rank.
+- `PlatformComparativeReport`: Comparative platform summary report identifying volume, engagement, viral, and discussion leaders.
+- `DetailedEngagementReport`: Full multi-dimensional Phase 4.2 engagement scorecard.
 - `TimeSeriesBucket`: Discrete temporal bucket containing volume, engagement, rolling averages, sentiment/emotion aggregates, and anomaly score.
 - `TemporalDynamicsReport`: Full series of time buckets, peak interval indicators, and anomalous spike counts.
 - `NarrativeTrajectoryMetrics`: Velocity, acceleration, engagement velocity, and sentiment drift.
@@ -118,23 +144,28 @@ report = service.analyze(
 print(f"Evaluated posts: {report.total_posts_evaluated}")
 print(f"Weighted Engagement: {report.engagement_analytics.weighted_engagement_score}")
 print(f"Virality Index: {report.engagement_analytics.virality_index}")
-print(f"Peak Volume: {report.temporal_dynamics.peak_bucket_volume}")
 
-# Inspect narrative lifecycles
-for narrative in report.narratives:
-    print(f"[{narrative.lifecycle_stage.value.upper()}] {narrative.label} (Posts: {narrative.post_count})")
+# Inspect detailed Phase 4.2 engagement metrics
+if report.detailed_engagement:
+    dist = report.detailed_engagement.distribution
+    print(f"Engagement Mean: {dist.mean_engagement}, Median: {dist.median_engagement}, StdDev: {dist.std_dev_engagement}")
+    print(f"Top Engaged Platform: {report.detailed_engagement.platform_comparison.top_engaging_platform}")
+    print(f"High-virality posts: {report.detailed_engagement.virality.high_virality_posts_count}")
 ```
 
 ---
 
 ## 6. Test Suite & Quality Verification
 
-Phase 4.1 includes an isolated test suite in `backend/tests/test_analytics_engine.py` covering:
-- Engagement calculations, virality indices, zero-division safety, and platform breakdowns.
-- Time-series timestamp parsing, interval flooring (hour/day/week), rolling averages, and anomaly z-score thresholding.
+Phase 4 tests in `backend/tests/test_analytics_engine.py` cover:
+- Engagement calculations, virality indices, amplification rates, conversation depth, and zero-division safety.
+- Statistical distribution metrics (min, max, mean, median, standard deviation, quartiles Q1/Q3).
+- Individual post scorecards and standard deviation outlier detection ($k \cdot \sigma$).
+- Cross-platform comparative metrics, volume/engagement share %, and efficiency rankings.
+- Time-series interval flooring (hour/day/week), rolling averages, and anomaly z-score thresholding.
 - Narrative lifecycle transitions, trajectory modeling, and sentiment drift.
 - Full `AnalyticsEngineService` pipeline execution and summary insight generation.
 
 ### Verification Status:
-- **Phase 4.1 Unit Tests**: 15 / 15 passing.
-- **Repository Total**: 312 / 312 passing (0 failures, 0 errors).
+- **Phase 4 Unit Tests**: 23 / 23 passing.
+- **Repository Total**: 320 / 320 passing (0 failures, 0 errors).

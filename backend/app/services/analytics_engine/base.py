@@ -3,10 +3,14 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from app.schemas.analytics_engine import (
+    DetailedEngagementReport,
+    EngagementDistribution,
     EngagementScoreBreakdown,
     IntervalUnit,
     NarrativeIntelligence,
     Phase4AnalyticsReport,
+    PlatformComparativeReport,
+    PostEngagementProfile,
     TemporalDynamicsReport,
 )
 
@@ -22,6 +26,28 @@ class BaseEngagementEngine(ABC):
     @abstractmethod
     def calculate_platform_breakdown(self, posts: List[Any]) -> Dict[str, EngagementScoreBreakdown]:
         """Calculate engagement breakdowns partitioned by social platform."""
+        pass
+
+    @abstractmethod
+    def calculate_distribution(self, posts: List[Any]) -> EngagementDistribution:
+        """Calculate statistical distribution of engagement scores across posts."""
+        pass
+
+    @abstractmethod
+    def extract_top_posts(
+        self, posts: List[Any], limit: int = 10, outlier_sigma: float = 2.0
+    ) -> Any:
+        """Extract top engaging posts and statistically high outliers."""
+        pass
+
+    @abstractmethod
+    def calculate_platform_comparison(self, posts: List[Any]) -> PlatformComparativeReport:
+        """Calculate cross-platform comparative benchmarks, shares, and efficiency rankings."""
+        pass
+
+    @abstractmethod
+    def generate_detailed_report(self, posts: List[Any], top_limit: int = 10) -> DetailedEngagementReport:
+        """Generate comprehensive Phase 4.2 multi-dimensional engagement analysis report."""
         pass
 
 

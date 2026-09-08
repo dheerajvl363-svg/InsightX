@@ -159,6 +159,116 @@ class NarrativeIntelligence(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class EngagementDistribution(BaseModel):
+    """Statistical distribution summary of weighted engagement scores across posts."""
+    min_engagement: float = Field(default=0.0, ge=0.0, description="Minimum post engagement score")
+    max_engagement: float = Field(default=0.0, ge=0.0, description="Maximum post engagement score")
+    mean_engagement: float = Field(default=0.0, ge=0.0, description="Arithmetic mean engagement score")
+    median_engagement: float = Field(default=0.0, ge=0.0, description="Median engagement score")
+    std_dev_engagement: float = Field(default=0.0, ge=0.0, description="Standard deviation of engagement scores")
+    p25: float = Field(default=0.0, ge=0.0, description="25th percentile (Q1) engagement score")
+    p75: float = Field(default=0.0, ge=0.0, description="75th percentile (Q3) engagement score")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PostEngagementProfile(BaseModel):
+    """Individual post engagement scorecard and outlier flag."""
+    post_id: str = Field(..., description="Unique post identifier")
+    platform: str = Field(..., description="Publishing platform")
+    likes: int = Field(default=0, ge=0, description="Likes count")
+    comments: int = Field(default=0, ge=0, description="Comments count")
+    shares: int = Field(default=0, ge=0, description="Shares count")
+    views: int = Field(default=0, ge=0, description="Views count")
+    weighted_score: float = Field(default=0.0, ge=0.0, description="Calculated weighted engagement score")
+    virality_score: float = Field(default=0.0, ge=0.0, description="Post virality ratio (shares / max(likes, 1))")
+    discussion_depth: float = Field(default=0.0, ge=0.0, description="Post discussion depth (comments / max(likes, 1))")
+    engagement_rate: float = Field(default=0.0, ge=0.0, description="Interactions per view (if views > 0)")
+    is_outlier: bool = Field(default=False, description="Flag indicating statistically high outlier engagement")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ViralityAnalytics(BaseModel):
+    """Detailed virality and content amplification analytics."""
+    virality_index: float = Field(default=0.0, ge=0.0, description="Aggregate virality ratio (shares / max(likes, 1))")
+    amplification_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Share of total interactions that are shares: shares / max(likes+comments+shares, 1)"
+    )
+    shares_per_post: float = Field(default=0.0, ge=0.0, description="Average shares generated per post")
+    high_virality_posts_count: int = Field(default=0, ge=0, description="Count of posts with virality ratio > 0.5")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DiscussionDepthAnalytics(BaseModel):
+    """Detailed conversational depth and community engagement analytics."""
+    discussion_depth: float = Field(default=0.0, ge=0.0, description="Aggregate discussion depth (comments / max(likes, 1))")
+    conversation_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Share of total interactions that are comments: comments / max(likes+comments+shares, 1)"
+    )
+    comments_per_post: float = Field(default=0.0, ge=0.0, description="Average comments generated per post")
+    high_discussion_posts_count: int = Field(default=0, ge=0, description="Count of posts with discussion depth > 0.5")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlatformEngagementComparison(BaseModel):
+    """Comparative engagement profile for a single social platform."""
+    platform: str = Field(..., description="Platform name")
+    total_posts: int = Field(default=0, ge=0, description="Total posts published on platform")
+    post_share_pct: float = Field(default=0.0, ge=0.0, le=100.0, description="Platform share of total post volume (%)")
+    engagement_share_pct: float = Field(default=0.0, ge=0.0, le=100.0, description="Platform share of total engagement (%)")
+    weighted_engagement_score: float = Field(default=0.0, ge=0.0, description="Total weighted engagement on platform")
+    avg_engagement_per_post: float = Field(default=0.0, ge=0.0, description="Average engagement per post on platform")
+    virality_index: float = Field(default=0.0, ge=0.0, description="Platform virality ratio")
+    discussion_depth: float = Field(default=0.0, ge=0.0, description="Platform discussion depth")
+    engagement_rate_per_impression: float = Field(default=0.0, ge=0.0, description="Interactions per view on platform")
+    efficiency_rank: int = Field(default=1, ge=1, description="Rank by average engagement per post (1 = highest)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlatformComparativeReport(BaseModel):
+    """Cross-platform comparative benchmarking and ranking report."""
+    platforms: Dict[str, PlatformEngagementComparison] = Field(
+        default_factory=dict,
+        description="Per-platform comparative profiles"
+    )
+    top_volume_platform: Optional[str] = Field(default=None, description="Platform with highest post volume")
+    top_engaging_platform: Optional[str] = Field(default=None, description="Platform with highest total engagement")
+    top_viral_platform: Optional[str] = Field(default=None, description="Platform with highest virality index")
+    top_discussion_platform: Optional[str] = Field(default=None, description="Platform with highest discussion depth")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DetailedEngagementReport(BaseModel):
+    """Comprehensive Phase 4.2 engagement analytics report."""
+    overall: EngagementScoreBreakdown = Field(..., description="High-level aggregate engagement metrics")
+    distribution: EngagementDistribution = Field(..., description="Engagement score statistical distribution")
+    virality: ViralityAnalytics = Field(..., description="Amplification and virality metrics")
+    discussion: DiscussionDepthAnalytics = Field(..., description="Conversational depth metrics")
+    platform_comparison: PlatformComparativeReport = Field(
+        ...,
+        description="Cross-platform comparisons and efficiency rankings"
+    )
+    top_posts: List[PostEngagementProfile] = Field(
+        default_factory=list,
+        description="Top engaging posts sorted by weighted engagement score"
+    )
+    outliers: List[PostEngagementProfile] = Field(
+        default_factory=list,
+        description="Statistically high outlier posts"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Phase4AnalyticsReport(BaseModel):
     """Comprehensive high-level analytical intelligence report produced by Phase 4 Engine."""
     total_posts_evaluated: int = Field(..., ge=0, description="Number of posts evaluated")
@@ -180,6 +290,10 @@ class Phase4AnalyticsReport(BaseModel):
     platform_breakdown: Dict[str, EngagementScoreBreakdown] = Field(
         default_factory=dict,
         description="Per-platform engagement and virality breakdowns"
+    )
+    detailed_engagement: Optional[DetailedEngagementReport] = Field(
+        default=None,
+        description="Extended Phase 4.2 multi-dimensional engagement analysis"
     )
     summary_insights: List[str] = Field(
         default_factory=list,

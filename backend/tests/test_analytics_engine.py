@@ -110,6 +110,115 @@ class TestEngagementEngine(unittest.TestCase):
         expected_score = 300 * 1.0 + 40 * 2.0 + 15 * 3.0
         self.assertEqual(breakdown.weighted_engagement_score, expected_score)
 
+    def test_statistical_distribution_empty_and_single(self):
+        empty_dist = self.engine.calculate_distribution([])
+        self.assertEqual(empty_dist.min_engagement, 0.0)
+        self.assertEqual(empty_dist.max_engagement, 0.0)
+        self.assertEqual(empty_dist.mean_engagement, 0.0)
+        self.assertEqual(empty_dist.median_engagement, 0.0)
+        self.assertEqual(empty_dist.std_dev_engagement, 0.0)
+        self.assertEqual(empty_dist.p25, 0.0)
+        self.assertEqual(empty_dist.p75, 0.0)
+
+        single_post = [{"metrics": {"likes": 10, "comments": 2, "shares": 1}}]  # 10 + 4 + 3 = 17.0
+        single_dist = self.engine.calculate_distribution(single_post)
+        self.assertEqual(single_dist.min_engagement, 17.0)
+        self.assertEqual(single_dist.max_engagement, 17.0)
+        self.assertEqual(single_dist.mean_engagement, 17.0)
+        self.assertEqual(single_dist.median_engagement, 17.0)
+        self.assertEqual(single_dist.std_dev_engagement, 0.0)
+        self.assertEqual(single_dist.p25, 17.0)
+        self.assertEqual(single_dist.p75, 17.0)
+
+    def test_statistical_distribution_multi_posts(self):
+        # Posts with scores: 10.0, 20.0, 30.0, 40.0
+        posts = [
+            {"metrics": {"likes": 10, "comments": 0, "shares": 0}},  # 10
+            {"metrics": {"likes": 20, "comments": 0, "shares": 0}},  # 20
+            {"metrics": {"likes": 30, "comments": 0, "shares": 0}},  # 30
+            {"metrics": {"likes": 40, "comments": 0, "shares": 0}},  # 40
+        ]
+        dist = self.engine.calculate_distribution(posts)
+        self.assertEqual(dist.min_engagement, 10.0)
+        self.assertEqual(dist.max_engagement, 40.0)
+        self.assertEqual(dist.mean_engagement, 25.0)
+        self.assertEqual(dist.median_engagement, 25.0)  # (20 + 30) / 2
+        # Variance: ((10-25)^2 + (20-25)^2 + (30-25)^2 + (40-25)^2)/4 = (225 + 25 + 25 + 225)/4 = 500/4 = 125
+        # Std dev: sqrt(125) = 11.1803
+        self.assertAlmostEqual(dist.std_dev_engagement, 11.1803, places=2)
+        self.assertAlmostEqual(dist.p25, 17.5, places=1)
+        self.assertAlmostEqual(dist.p75, 32.5, places=1)
+
+    def test_virality_and_amplification_analytics(self):
+        posts = [
+            {"metrics": {"likes": 100, "comments": 10, "shares": 50}},  # virality ratio 0.5 (high)
+            {"metrics": {"likes": 100, "comments": 10, "shares": 80}},  # virality ratio 0.8 (high)
+            {"metrics": {"likes": 100, "comments": 10, "shares": 10}},  # virality ratio 0.1 (low)
+        ]
+        virality = self.engine.calculate_virality_analytics(posts, high_virality_threshold=0.5)
+        # Total: likes 300, comments 30, shares 140 -> interactions 470
+        self.assertEqual(virality.virality_index, round(140 / 300, 4))
+        self.assertEqual(virality.amplification_rate, round(140 / 470, 4))
+        self.assertEqual(virality.shares_per_post, round(140 / 3, 4))
+        self.assertEqual(virality.high_virality_posts_count, 2)
+
+    def test_discussion_depth_analytics(self):
+        posts = [
+            {"metrics": {"likes": 100, "comments": 60, "shares": 10}},  # depth 0.6 (high)
+            {"metrics": {"likes": 100, "comments": 10, "shares": 10}},  # depth 0.1 (low)
+        ]
+        disc = self.engine.calculate_discussion_analytics(posts, high_discussion_threshold=0.5)
+        # Total: likes 200, comments 70, shares 20 -> interactions 290
+        self.assertEqual(disc.discussion_depth, round(70 / 200, 4))
+        self.assertEqual(disc.conversation_rate, round(70 / 290, 4))
+        self.assertEqual(disc.comments_per_post, 35.0)
+        self.assertEqual(disc.high_discussion_posts_count, 1)
+
+    def test_top_posts_and_outlier_detection(self):
+        posts = [
+            {"id": "p1", "platform": "x", "metrics": {"likes": 10, "comments": 2, "shares": 1, "views": 100}},
+            {"id": "p2", "platform": "x", "metrics": {"likes": 12, "comments": 2, "shares": 1, "views": 100}},
+            {"id": "p3", "platform": "x", "metrics": {"likes": 10, "comments": 3, "shares": 1, "views": 100}},
+            {"id": "p_viral", "platform": "reddit", "metrics": {"likes": 500, "comments": 100, "shares": 200, "views": 10000}},
+        ]
+        top_posts, outliers = self.engine.extract_top_posts(posts, limit=2, outlier_sigma=1.5)
+        self.assertEqual(len(top_posts), 2)
+        self.assertEqual(top_posts[0].post_id, "p_viral")
+        self.assertGreater(top_posts[0].weighted_score, 1000.0)
+        self.assertEqual(len(outliers), 1)
+        self.assertEqual(outliers[0].post_id, "p_viral")
+        self.assertTrue(outliers[0].is_outlier)
+
+    def test_platform_comparison_and_benchmarks(self):
+        posts = [
+            {"platform": "x", "metrics": {"likes": 100, "comments": 20, "shares": 10, "views": 1000}},
+            {"platform": "x", "metrics": {"likes": 100, "comments": 20, "shares": 10, "views": 1000}},
+            {"platform": "reddit", "metrics": {"likes": 500, "comments": 100, "shares": 50, "views": 5000}},
+        ]
+        report = self.engine.calculate_platform_comparison(posts)
+        self.assertIn("x", report.platforms)
+        self.assertIn("reddit", report.platforms)
+        self.assertEqual(report.top_volume_platform, "x")
+        self.assertEqual(report.top_engaging_platform, "reddit")
+        self.assertEqual(report.platforms["reddit"].efficiency_rank, 1)
+        self.assertEqual(report.platforms["x"].efficiency_rank, 2)
+        self.assertAlmostEqual(report.platforms["x"].post_share_pct, 66.67, places=1)
+        self.assertAlmostEqual(report.platforms["reddit"].post_share_pct, 33.33, places=1)
+
+    def test_missing_and_none_values_robustness(self):
+        posts = [
+            {"platform": None, "metrics": None},
+            {"platform": "x", "likes": None, "comments": None, "shares": None, "views": None},
+            {},
+        ]
+        detailed = self.engine.generate_detailed_report(posts)
+        self.assertEqual(detailed.overall.total_posts, 3)
+        self.assertEqual(detailed.overall.total_likes, 0)
+        self.assertEqual(detailed.distribution.mean_engagement, 0.0)
+        self.assertEqual(detailed.virality.virality_index, 0.0)
+        self.assertEqual(detailed.discussion.discussion_depth, 0.0)
+        self.assertEqual(len(detailed.top_posts), 3)
+
 
 class TestTimeSeriesDynamicsEngine(unittest.TestCase):
     def setUp(self):
@@ -430,6 +539,22 @@ class TestAnalyticsEngineService(unittest.TestCase):
         self.assertEqual(ai_narrative.label, "AI Infrastructure")
         self.assertEqual(ai_narrative.post_count, 2)
         self.assertIn("gpu", ai_narrative.keywords)
+
+    def test_service_analyze_detailed_engagement_integration(self):
+        posts = [
+            {"id": "post_a", "platform": "x", "metrics": {"likes": 50, "comments": 10, "shares": 5, "views": 1000}},
+            {"id": "post_b", "platform": "reddit", "metrics": {"likes": 200, "comments": 50, "shares": 30, "views": 4000}},
+        ]
+        report = self.service.analyze(posts)
+        self.assertIsNotNone(report.detailed_engagement)
+        det = report.detailed_engagement
+        self.assertEqual(det.overall.total_posts, 2)
+        self.assertGreater(det.distribution.max_engagement, det.distribution.min_engagement)
+        self.assertEqual(len(det.top_posts), 2)
+        self.assertEqual(det.top_posts[0].post_id, "post_b")
+        self.assertIn("x", det.platform_comparison.platforms)
+        self.assertIn("reddit", det.platform_comparison.platforms)
+        self.assertEqual(det.platform_comparison.top_engaging_platform, "reddit")
 
 
 if __name__ == "__main__":
