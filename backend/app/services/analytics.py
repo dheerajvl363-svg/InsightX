@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.metric import PostMetric
 from app.models.platform import Platform
 from app.models.post import Post
+from app.models.topic import PostTopic, Topic
 from app.models.user import User
 from app.schemas.analytics import (
     AuthorListResponse,
@@ -20,6 +21,8 @@ from app.schemas.analytics import (
     PostSummary,
     TimeSeriesPoint,
     TimeSeriesResponse,
+    TopicListResponse,
+    TopicSummary,
 )
 from app.schemas.post import PostMetricsSchema
 
@@ -41,6 +44,13 @@ def _normalize_datetime_for_db(value: Optional[datetime]) -> Optional[datetime]:
 
 ALLOWED_SORT_BY = {"posted_at", "likes", "comments", "shares", "views"}
 ALLOWED_AUTHOR_SORT_BY = {
+    "post_count",
+    "total_likes",
+    "total_comments",
+    "total_shares",
+    "total_views",
+}
+ALLOWED_TOPIC_SORT_BY = {
     "post_count",
     "total_likes",
     "total_comments",
@@ -646,3 +656,139 @@ class AnalyticsService:
             )
 
         return AuthorListResponse(total=total, limit=limit, offset=offset, items=items)
+
+    def get_topic_summary(
+        self,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        search: Optional[str] = None,
+        sort_by: str = "post_count",
+        order: str = "desc",
+        limit: int = 50,
+        offset: int = 0,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> TopicListResponse:
+        """
+        Aggregates topic-level analytics (post count, latest metric engagement totals & averages)
+        grouped by topic name.
+        Supports filtering on posts before aggregation, and sorting on SQL aggregate fields.
+        """
+        # Validate sort parameters
+        clean_sort_by = (sort_by or "post_count").strip().lower()
+        if clean_sort_by not in ALLOWED_TOPIC_SORT_BY:
+            raise ValueError(
+                f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_TOPIC_SORT_BY))}."
+            )
+
+        clean_order = (order or "desc").strip().lower()
+        if clean_order not in ALLOWED_ORDER:
+            raise ValueError(
+                f"Invalid order '{order}'. Supported orders: {', '.join(sorted(ALLOWED_ORDER))}."
+            )
+
+        effective_start = start_date if start_date is not None else start_time
+        effective_end = end_date if end_date is not None else end_time
+
+        norm_start_date = self._normalize_datetime_for_db(effective_start)
+        norm_end_date = self._normalize_datetime_for_db(effective_end)
+
+        # Base filtered-post query before topic aggregation
+        filtered_posts = self._apply_filters(
+            self.db.query(Post),
+            platform=platform,
+            language=language,
+            start_time=norm_start_date,
+            end_time=norm_end_date,
+            search=search,
+        ).subquery()
+
+        # Latest metric snapshot per post
+        metric_sq = self._latest_metric_subquery()
+
+        # Aggregates
+        post_count_col = func.count(filtered_posts.c.id).label("post_count")
+        total_likes_col = func.coalesce(func.sum(metric_sq.c.likes), 0).label("total_likes")
+        total_comments_col = func.coalesce(func.sum(metric_sq.c.comments), 0).label("total_comments")
+        total_shares_col = func.coalesce(func.sum(metric_sq.c.shares), 0).label("total_shares")
+        total_views_col = func.coalesce(func.sum(metric_sq.c.views), 0).label("total_views")
+        earliest_post_col = func.min(filtered_posts.c.posted_at).label("earliest_post")
+        latest_post_col = func.max(filtered_posts.c.posted_at).label("latest_post")
+
+        query = (
+            self.db.query(
+                Topic.id.label("topic_id"),
+                Topic.name.label("topic_name"),
+                post_count_col,
+                total_likes_col,
+                total_comments_col,
+                total_shares_col,
+                total_views_col,
+                earliest_post_col,
+                latest_post_col,
+            )
+            .join(PostTopic, filtered_posts.c.id == PostTopic.post_id)
+            .join(Topic, PostTopic.topic_id == Topic.id)
+            .outerjoin(metric_sq, filtered_posts.c.id == metric_sq.c.post_id)
+            .group_by(Topic.id, Topic.name)
+        )
+
+        total = query.count()
+
+        # Sorting on SQL aggregates
+        sort_col_map = {
+            "post_count": post_count_col,
+            "total_likes": total_likes_col,
+            "total_comments": total_comments_col,
+            "total_shares": total_shares_col,
+            "total_views": total_views_col,
+        }
+
+        is_desc = (clean_order == "desc")
+        primary_agg = sort_col_map[clean_sort_by]
+        primary_clause = primary_agg.desc() if is_desc else primary_agg.asc()
+        secondary_clause = Topic.name.desc() if is_desc else Topic.name.asc()
+
+        order_by_clauses = [primary_clause, secondary_clause]
+
+        rows = (
+            query.order_by(*order_by_clauses)
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        items: List[TopicSummary] = []
+        for row in rows:
+            post_count = int(row.post_count) if row.post_count else 0
+            total_likes = int(row.total_likes) if row.total_likes else 0
+            total_comments = int(row.total_comments) if row.total_comments else 0
+            total_shares = int(row.total_shares) if row.total_shares else 0
+            total_views = int(row.total_views) if row.total_views else 0
+
+            divisor = float(post_count) if post_count > 0 else 1.0
+            avg_likes = round(total_likes / divisor, 2) if post_count > 0 else 0.0
+            avg_comments = round(total_comments / divisor, 2) if post_count > 0 else 0.0
+            avg_shares = round(total_shares / divisor, 2) if post_count > 0 else 0.0
+            avg_views = round(total_views / divisor, 2) if post_count > 0 else 0.0
+
+            items.append(
+                TopicSummary(
+                    topic_name=row.topic_name,
+                    post_count=post_count,
+                    total_likes=total_likes,
+                    total_comments=total_comments,
+                    total_shares=total_shares,
+                    total_views=total_views,
+                    avg_likes=avg_likes,
+                    avg_comments=avg_comments,
+                    avg_shares=avg_shares,
+                    avg_views=avg_views,
+                    earliest_post=row.earliest_post,
+                    latest_post=row.latest_post,
+                )
+            )
+
+        return TopicListResponse(total=total, limit=limit, offset=offset, items=items)

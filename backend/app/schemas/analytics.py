@@ -91,6 +91,30 @@ class AuthorListResponse(BaseModel):
     items: List[AuthorSummary] = Field(default_factory=list, description="List of author summaries")
 
 
+class TopicSummary(BaseModel):
+    """Aggregated analytics summary for a specific topic."""
+    topic_name: str = Field(..., description="Canonical topic name")
+    post_count: int = Field(..., description="Total posts associated with this topic matching filters")
+    total_likes: int = Field(default=0, description="Sum of likes")
+    total_comments: int = Field(default=0, description="Sum of comments/replies")
+    total_shares: int = Field(default=0, description="Sum of shares/retweets")
+    total_views: int = Field(default=0, description="Sum of views/impressions")
+    avg_likes: float = Field(default=0.0, description="Average likes per post")
+    avg_comments: float = Field(default=0.0, description="Average comments per post")
+    avg_shares: float = Field(default=0.0, description="Average shares per post")
+    avg_views: float = Field(default=0.0, description="Average views per post")
+    earliest_post: Optional[datetime] = Field(default=None, description="Earliest post timestamp for topic")
+    latest_post: Optional[datetime] = Field(default=None, description="Latest post timestamp for topic")
+
+
+class TopicListResponse(BaseModel):
+    """Paginated list of topics with their aggregated analytics."""
+    total: int = Field(..., description="Total topics matching filter criteria")
+    limit: int = Field(..., description="Maximum records returned in this page")
+    offset: int = Field(..., description="Offset position")
+    items: List[TopicSummary] = Field(default_factory=list, description="List of topic summaries")
+
+
 class TimeSeriesPoint(BaseModel):
     """Single point in a time-series aggregation."""
     date: str = Field(..., description="Date string in YYYY-MM-DD format")

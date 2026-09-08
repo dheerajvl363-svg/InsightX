@@ -9,6 +9,7 @@ from app.main import app
 from app.models.metric import PostMetric
 from app.models.platform import Platform
 from app.models.post import Post
+from app.models.topic import PostTopic, Topic
 from app.models.user import User
 from app.schemas.analytics import (
     AuthorListResponse,
@@ -19,6 +20,8 @@ from app.schemas.analytics import (
     PlatformSummary,
     PostListResponse,
     TimeSeriesResponse,
+    TopicListResponse,
+    TopicSummary,
 )
 from app.services.analytics import AnalyticsService
 
@@ -76,13 +79,22 @@ class TestAnalyticsService(unittest.TestCase):
         self.service = AnalyticsService(self.db)
         self.temp_post_ids = []
         self.temp_user_ids = []
+        self.temp_topic_ids = []
 
     def tearDown(self):
         if self.temp_post_ids:
             self.db.query(PostMetric).filter(PostMetric.post_id.in_(self.temp_post_ids)).delete(
                 synchronize_session=False
             )
+            self.db.query(PostTopic).filter(PostTopic.post_id.in_(self.temp_post_ids)).delete(
+                synchronize_session=False
+            )
             self.db.query(Post).filter(Post.id.in_(self.temp_post_ids)).delete(
+                synchronize_session=False
+            )
+            self.db.commit()
+        if hasattr(self, "temp_topic_ids") and self.temp_topic_ids:
+            self.db.query(Topic).filter(Topic.id.in_(self.temp_topic_ids)).delete(
                 synchronize_session=False
             )
             self.db.commit()
@@ -929,6 +941,381 @@ class TestAnalyticsService(unittest.TestCase):
         for i in range(len(res.items) - 1):
             self.assertGreaterEqual(res.items[i].total_likes, res.items[i + 1].total_likes)
 
+    def test_topic_summary_basic_aggregation(self):
+        u = User(platform_id=1, username="c85_topic_user", display_name="Topic User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t1 = datetime(2026, 1, 1, 10, 0, 0)
+        t2 = datetime(2026, 1, 2, 10, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_tp1",
+            text="Topic post 1",
+            posted_at=t1,
+            collected_at=t1,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_tp2",
+            text="Topic post 2",
+            posted_at=t2,
+            collected_at=t2,
+            language="en",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        topic_a = Topic(name="topic_analytics_test_a")
+        topic_b = Topic(name="topic_analytics_test_b")
+        self.db.add_all([topic_a, topic_b])
+        self.db.commit()
+        self.temp_topic_ids.extend([topic_a.id, topic_b.id])
+
+        pt1 = PostTopic(post_id=p1.id, topic_id=topic_a.id)
+        pt2 = PostTopic(post_id=p2.id, topic_id=topic_a.id)
+        pt3 = PostTopic(post_id=p2.id, topic_id=topic_b.id)
+        self.db.add_all([pt1, pt2, pt3])
+        self.db.commit()
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=100, comments=10, shares=5, views=1000)
+        m2 = PostMetric(post_id=p2.id, collected_at=t2, likes=50, comments=5, shares=2, views=500)
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        res = self.service.get_topic_summary()
+        self.assertEqual(res.total, 2)
+
+        topic_map = {item.topic_name: item for item in res.items}
+        self.assertIn("topic_analytics_test_a", topic_map)
+        self.assertIn("topic_analytics_test_b", topic_map)
+
+        item_a = topic_map["topic_analytics_test_a"]
+        self.assertEqual(item_a.post_count, 2)
+        self.assertEqual(item_a.total_likes, 150)
+        self.assertEqual(item_a.total_comments, 15)
+        self.assertEqual(item_a.total_shares, 7)
+        self.assertEqual(item_a.total_views, 1500)
+        self.assertEqual(item_a.avg_likes, 75.0)
+        self.assertEqual(item_a.avg_comments, 7.5)
+        self.assertEqual(item_a.avg_shares, 3.5)
+        self.assertEqual(item_a.avg_views, 750.0)
+
+        item_b = topic_map["topic_analytics_test_b"]
+        self.assertEqual(item_b.post_count, 1)
+        self.assertEqual(item_b.total_likes, 50)
+        self.assertEqual(item_b.total_comments, 5)
+        self.assertEqual(item_b.total_shares, 2)
+        self.assertEqual(item_b.total_views, 500)
+        self.assertEqual(item_b.avg_likes, 50.0)
+        self.assertEqual(item_b.avg_comments, 5.0)
+        self.assertEqual(item_b.avg_shares, 2.0)
+        self.assertEqual(item_b.avg_views, 500.0)
+
+    def test_topic_summary_uses_latest_metric_snapshot(self):
+        u = User(platform_id=1, username="c85_topic_user_snapshot", display_name="Snapshot User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t = datetime(2026, 1, 1, 9, 0, 0)
+        p = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_snap_p1",
+            text="Topic snapshot post",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add(p)
+        self.db.commit()
+        self.temp_post_ids.append(p.id)
+
+        topic = Topic(name="topic_analytics_snapshot_test")
+        self.db.add(topic)
+        self.db.commit()
+        self.temp_topic_ids.append(topic.id)
+
+        pt = PostTopic(post_id=p.id, topic_id=topic.id)
+        self.db.add(pt)
+        self.db.commit()
+
+        m_older = PostMetric(
+            post_id=p.id,
+            collected_at=datetime(2026, 1, 1, 10, 0, 0),
+            likes=10,
+            comments=2,
+            shares=1,
+            views=100,
+        )
+        m_newer = PostMetric(
+            post_id=p.id,
+            collected_at=datetime(2026, 1, 2, 10, 0, 0),
+            likes=100,
+            comments=20,
+            shares=10,
+            views=1000,
+        )
+        self.db.add_all([m_older, m_newer])
+        self.db.commit()
+
+        res = self.service.get_topic_summary()
+        topic_map = {item.topic_name: item for item in res.items}
+        self.assertIn("topic_analytics_snapshot_test", topic_map)
+
+        item = topic_map["topic_analytics_snapshot_test"]
+        self.assertEqual(item.post_count, 1)
+        self.assertEqual(item.total_likes, 100)
+        self.assertEqual(item.total_comments, 20)
+        self.assertEqual(item.total_shares, 10)
+        self.assertEqual(item.total_views, 1000)
+        self.assertEqual(item.avg_likes, 100.0)
+        self.assertEqual(item.avg_comments, 20.0)
+        self.assertEqual(item.avg_shares, 10.0)
+        self.assertEqual(item.avg_views, 1000.0)
+
+        # Assert older snapshot values were not summed
+        self.assertNotEqual(item.total_likes, 110)
+        self.assertNotEqual(item.total_comments, 22)
+        self.assertNotEqual(item.total_shares, 11)
+        self.assertNotEqual(item.total_views, 1100)
+
+    def test_topic_summary_counts_posts_without_metrics(self):
+        u = User(platform_id=1, username="c85_topic_user_no_metric", display_name="No Metric User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t1 = datetime(2026, 1, 1, 10, 0, 0)
+        t2 = datetime(2026, 1, 2, 10, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_nm_p1",
+            text="Topic with metric post",
+            posted_at=t1,
+            collected_at=t1,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_nm_p2",
+            text="Topic without metric post",
+            posted_at=t2,
+            collected_at=t2,
+            language="en",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        topic = Topic(name="topic_analytics_no_metric_test")
+        self.db.add(topic)
+        self.db.commit()
+        self.temp_topic_ids.append(topic.id)
+
+        pt1 = PostTopic(post_id=p1.id, topic_id=topic.id)
+        pt2 = PostTopic(post_id=p2.id, topic_id=topic.id)
+        self.db.add_all([pt1, pt2])
+        self.db.commit()
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=100, comments=10, shares=5, views=1000)
+        self.db.add(m1)
+        self.db.commit()
+
+        res = self.service.get_topic_summary()
+        topic_map = {item.topic_name: item for item in res.items}
+        self.assertIn("topic_analytics_no_metric_test", topic_map)
+
+        item = topic_map["topic_analytics_no_metric_test"]
+        self.assertEqual(item.post_count, 2)
+        self.assertEqual(item.total_likes, 100)
+        self.assertEqual(item.total_comments, 10)
+        self.assertEqual(item.total_shares, 5)
+        self.assertEqual(item.total_views, 1000)
+        self.assertEqual(item.avg_likes, 50.0)
+        self.assertEqual(item.avg_comments, 5.0)
+        self.assertEqual(item.avg_shares, 2.5)
+        self.assertEqual(item.avg_views, 500.0)
+
+    def test_topic_summary_applies_post_filters(self):
+        u1 = User(platform_id=1, username="c85_topic_filter_u1", display_name="Filter User 1")
+        u2 = User(platform_id=1, username="c85_topic_filter_u2", display_name="Filter User 2")
+        self.db.add_all([u1, u2])
+        self.db.commit()
+        self.temp_user_ids.extend([u1.id, u2.id])
+
+        t1 = datetime(2026, 1, 10, 10, 0, 0)
+        t2 = datetime(2026, 2, 10, 10, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            user_id=u1.id,
+            external_post_id="c85_filter_p1",
+            text="python analytics topic",
+            posted_at=t1,
+            collected_at=t1,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u2.id,
+            external_post_id="c85_filter_p2",
+            text="football topic",
+            posted_at=t2,
+            collected_at=t2,
+            language="te",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        topic = Topic(name="topic_analytics_filter_test")
+        self.db.add(topic)
+        self.db.commit()
+        self.temp_topic_ids.append(topic.id)
+
+        pt1 = PostTopic(post_id=p1.id, topic_id=topic.id)
+        pt2 = PostTopic(post_id=p2.id, topic_id=topic.id)
+        self.db.add_all([pt1, pt2])
+        self.db.commit()
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=100, comments=0, shares=0, views=0)
+        m2 = PostMetric(post_id=p2.id, collected_at=t2, likes=50, comments=0, shares=0, views=0)
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        # 1. language="en" → only Post 1 should count
+        res_lang = self.service.get_topic_summary(language="en")
+        map_lang = {item.topic_name: item for item in res_lang.items}
+        self.assertIn("topic_analytics_filter_test", map_lang)
+        self.assertEqual(map_lang["topic_analytics_filter_test"].post_count, 1)
+        self.assertEqual(map_lang["topic_analytics_filter_test"].total_likes, 100)
+
+        # 2. search="python" → only Post 1 should count
+        res_search = self.service.get_topic_summary(search="python")
+        map_search = {item.topic_name: item for item in res_search.items}
+        self.assertIn("topic_analytics_filter_test", map_search)
+        self.assertEqual(map_search["topic_analytics_filter_test"].post_count, 1)
+        self.assertEqual(map_search["topic_analytics_filter_test"].total_likes, 100)
+
+        # 3. start_date=datetime(2026, 2, 1) → only Post 2 should count
+        res_start = self.service.get_topic_summary(start_date=datetime(2026, 2, 1))
+        map_start = {item.topic_name: item for item in res_start.items}
+        self.assertIn("topic_analytics_filter_test", map_start)
+        self.assertEqual(map_start["topic_analytics_filter_test"].post_count, 1)
+        self.assertEqual(map_start["topic_analytics_filter_test"].total_likes, 50)
+
+        # 4. start_date=datetime(2026, 1, 1), end_date=datetime(2026, 1, 31, 23, 59, 59) → only Post 1 should count
+        res_range = self.service.get_topic_summary(
+            start_date=datetime(2026, 1, 1),
+            end_date=datetime(2026, 1, 31, 23, 59, 59),
+        )
+        map_range = {item.topic_name: item for item in res_range.items}
+        self.assertIn("topic_analytics_filter_test", map_range)
+        self.assertEqual(map_range["topic_analytics_filter_test"].post_count, 1)
+        self.assertEqual(map_range["topic_analytics_filter_test"].total_likes, 100)
+
+        # No filters → both posts count
+        res_none = self.service.get_topic_summary()
+        map_none = {item.topic_name: item for item in res_none.items}
+        self.assertIn("topic_analytics_filter_test", map_none)
+        self.assertEqual(map_none["topic_analytics_filter_test"].post_count, 2)
+        self.assertEqual(map_none["topic_analytics_filter_test"].total_likes, 150)
+
+    def test_topic_summary_sorting_and_pagination(self):
+        u = User(platform_id=1, username="c85_topic_sort_user", display_name="Sort User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t1 = datetime(2026, 1, 1, 10, 0, 0)
+        t2 = datetime(2026, 1, 2, 10, 0, 0)
+        t3 = datetime(2026, 1, 3, 10, 0, 0)
+
+        p1 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_sort_p1",
+            text="Topic sort post 1",
+            posted_at=t1,
+            collected_at=t1,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_sort_p2",
+            text="Topic sort post 2",
+            posted_at=t2,
+            collected_at=t2,
+            language="en",
+        )
+        p3 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c85_sort_p3",
+            text="Topic sort post 3",
+            posted_at=t3,
+            collected_at=t3,
+            language="en",
+        )
+        self.db.add_all([p1, p2, p3])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id, p3.id])
+
+        topic_a = Topic(name="topic_analytics_sort_a")
+        topic_b = Topic(name="topic_analytics_sort_b")
+        topic_c = Topic(name="topic_analytics_sort_c")
+        self.db.add_all([topic_a, topic_b, topic_c])
+        self.db.commit()
+        self.temp_topic_ids.extend([topic_a.id, topic_b.id, topic_c.id])
+
+        pt1 = PostTopic(post_id=p1.id, topic_id=topic_a.id)
+        pt2 = PostTopic(post_id=p2.id, topic_id=topic_b.id)
+        pt3 = PostTopic(post_id=p3.id, topic_id=topic_c.id)
+        self.db.add_all([pt1, pt2, pt3])
+        self.db.commit()
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=100, comments=0, shares=0, views=0)
+        m2 = PostMetric(post_id=p2.id, collected_at=t2, likes=300, comments=0, shares=0, views=0)
+        m3 = PostMetric(post_id=p3.id, collected_at=t3, likes=200, comments=0, shares=0, views=0)
+        self.db.add_all([m1, m2, m3])
+        self.db.commit()
+
+        # Sort total_likes desc → B, C, A
+        res_desc = self.service.get_topic_summary(sort_by="total_likes", order="desc")
+        self.assertEqual(res_desc.total, 3)
+        self.assertEqual(
+            [item.topic_name for item in res_desc.items],
+            ["topic_analytics_sort_b", "topic_analytics_sort_c", "topic_analytics_sort_a"],
+        )
+
+        # Sort total_likes asc → A, C, B
+        res_asc = self.service.get_topic_summary(sort_by="total_likes", order="asc")
+        self.assertEqual(res_asc.total, 3)
+        self.assertEqual(
+            [item.topic_name for item in res_asc.items],
+            ["topic_analytics_sort_a", "topic_analytics_sort_c", "topic_analytics_sort_b"],
+        )
+
+        # Pagination limit=2, offset=1 on desc → C, A
+        res_page = self.service.get_topic_summary(sort_by="total_likes", order="desc", limit=2, offset=1)
+        self.assertEqual(res_page.total, 3)
+        self.assertEqual(res_page.limit, 2)
+        self.assertEqual(res_page.offset, 1)
+        self.assertEqual(len(res_page.items), 2)
+        self.assertEqual(
+            [item.topic_name for item in res_page.items],
+            ["topic_analytics_sort_c", "topic_analytics_sort_a"],
+        )
+
 
 class TestAnalyticsAPI(unittest.TestCase):
     """
@@ -1278,6 +1665,228 @@ class TestAnalyticsAPI(unittest.TestCase):
         self.assertEqual(data["limit"], 2)
         self.assertEqual(data["offset"], 0)
         self.assertLessEqual(len(data["items"]), 2)
+
+    # --- Component 8.5: Topic Analytics Aggregation API tests ---
+
+    def test_46_get_topics_endpoint_basic(self):
+        db = SessionLocal()
+        try:
+            u = User(platform_id=1, username="c85_api_topic_user_basic", display_name="Topic API User")
+            db.add(u)
+            db.commit()
+
+            t1 = datetime(2026, 1, 1, 10, 0, 0)
+            p = Post(
+                platform_id=1,
+                user_id=u.id,
+                external_post_id="c85_api_basic_p1",
+                text="API basic topic post",
+                posted_at=t1,
+                collected_at=t1,
+                language="en",
+            )
+            db.add(p)
+            db.commit()
+
+            topic = Topic(name="topic_api_basic_test")
+            db.add(topic)
+            db.commit()
+
+            pt = PostTopic(post_id=p.id, topic_id=topic.id)
+            db.add(pt)
+            db.commit()
+
+            m = PostMetric(post_id=p.id, collected_at=t1, likes=150, comments=15, shares=5, views=1000)
+            db.add(m)
+            db.commit()
+
+            code, data = call_api("GET", "/api/v1/analytics/topics?limit=5&offset=0")
+            self.assertEqual(code, 200)
+            self.assertIn("total", data)
+            self.assertIn("items", data)
+            self.assertEqual(data["limit"], 5)
+            self.assertEqual(data["offset"], 0)
+            self.assertGreaterEqual(data["total"], 1)
+
+            topic_map = {item["topic_name"]: item for item in data["items"]}
+            self.assertIn("topic_api_basic_test", topic_map)
+            item = topic_map["topic_api_basic_test"]
+            self.assertEqual(item["post_count"], 1)
+            self.assertEqual(item["total_likes"], 150)
+            self.assertEqual(item["total_comments"], 15)
+            self.assertEqual(item["total_shares"], 5)
+            self.assertEqual(item["total_views"], 1000)
+            self.assertEqual(item["avg_likes"], 150.0)
+            self.assertEqual(item["avg_comments"], 15.0)
+            self.assertEqual(item["avg_shares"], 5.0)
+            self.assertEqual(item["avg_views"], 1000.0)
+            self.assertIn("earliest_post", item)
+            self.assertIn("latest_post", item)
+        finally:
+            db.query(PostMetric).filter(PostMetric.post_id == p.id).delete()
+            db.query(PostTopic).filter(PostTopic.post_id == p.id).delete()
+            db.query(Post).filter(Post.id == p.id).delete()
+            db.query(Topic).filter(Topic.id == topic.id).delete()
+            db.query(User).filter(User.id == u.id).delete()
+            db.commit()
+            db.close()
+
+    def test_47_get_topics_endpoint_filtering(self):
+        db = SessionLocal()
+        try:
+            u = User(platform_id=1, username="c85_api_topic_user_filter", display_name="Filter API User")
+            db.add(u)
+            db.commit()
+
+            t1 = datetime(2026, 1, 1, 10, 0, 0)
+            t2 = datetime(2026, 1, 2, 10, 0, 0)
+
+            p1 = Post(
+                platform_id=1,
+                user_id=u.id,
+                external_post_id="c85_api_flt_p1",
+                text="Python machine learning post",
+                posted_at=t1,
+                collected_at=t1,
+                language="en",
+            )
+            p2 = Post(
+                platform_id=1,
+                user_id=u.id,
+                external_post_id="c85_api_flt_p2",
+                text="Football champions league match",
+                posted_at=t2,
+                collected_at=t2,
+                language="te",
+            )
+            db.add_all([p1, p2])
+            db.commit()
+
+            topic1 = Topic(name="topic_api_filter_python")
+            topic2 = Topic(name="topic_api_filter_sports")
+            db.add_all([topic1, topic2])
+            db.commit()
+
+            pt1 = PostTopic(post_id=p1.id, topic_id=topic1.id)
+            pt2 = PostTopic(post_id=p2.id, topic_id=topic2.id)
+            db.add_all([pt1, pt2])
+            db.commit()
+
+            code_lang, data_lang = call_api("GET", "/api/v1/analytics/topics?language=en")
+            self.assertEqual(code_lang, 200)
+            names_lang = [item["topic_name"] for item in data_lang["items"]]
+            self.assertIn("topic_api_filter_python", names_lang)
+            self.assertNotIn("topic_api_filter_sports", names_lang)
+
+            code_srch, data_srch = call_api("GET", "/api/v1/analytics/topics?search=football")
+            self.assertEqual(code_srch, 200)
+            names_srch = [item["topic_name"] for item in data_srch["items"]]
+            self.assertIn("topic_api_filter_sports", names_srch)
+            self.assertNotIn("topic_api_filter_python", names_srch)
+        finally:
+            db.query(PostTopic).filter(PostTopic.post_id.in_([p1.id, p2.id])).delete(synchronize_session=False)
+            db.query(Post).filter(Post.id.in_([p1.id, p2.id])).delete(synchronize_session=False)
+            db.query(Topic).filter(Topic.id.in_([topic1.id, topic2.id])).delete(synchronize_session=False)
+            db.query(User).filter(User.id == u.id).delete()
+            db.commit()
+            db.close()
+
+    def test_48_get_topics_endpoint_sorting_and_pagination(self):
+        db = SessionLocal()
+        try:
+            u = User(platform_id=1, username="c85_api_topic_user_sort", display_name="Sort API User")
+            db.add(u)
+            db.commit()
+
+            t1 = datetime(2026, 1, 1, 10, 0, 0)
+            t2 = datetime(2026, 1, 2, 10, 0, 0)
+
+            p1 = Post(
+                platform_id=1,
+                user_id=u.id,
+                external_post_id="c85_api_sort_p1",
+                text="Topic sorting post low",
+                posted_at=t1,
+                collected_at=t1,
+                language="en",
+            )
+            p2 = Post(
+                platform_id=1,
+                user_id=u.id,
+                external_post_id="c85_api_sort_p2",
+                text="Topic sorting post high",
+                posted_at=t2,
+                collected_at=t2,
+                language="en",
+            )
+            db.add_all([p1, p2])
+            db.commit()
+
+            topic1 = Topic(name="topic_api_sort_low")
+            topic2 = Topic(name="topic_api_sort_high")
+            db.add_all([topic1, topic2])
+            db.commit()
+
+            pt1 = PostTopic(post_id=p1.id, topic_id=topic1.id)
+            pt2 = PostTopic(post_id=p2.id, topic_id=topic2.id)
+            db.add_all([pt1, pt2])
+            db.commit()
+
+            m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=50, comments=0, shares=0, views=0)
+            m2 = PostMetric(post_id=p2.id, collected_at=t2, likes=500, comments=0, shares=0, views=0)
+            db.add_all([m1, m2])
+            db.commit()
+
+            code, data = call_api("GET", "/api/v1/analytics/topics?sort_by=total_likes&order=desc")
+            self.assertEqual(code, 200)
+            topic_names = [item["topic_name"] for item in data["items"]]
+            idx_high = topic_names.index("topic_api_sort_high")
+            idx_low = topic_names.index("topic_api_sort_low")
+            self.assertLess(idx_high, idx_low)
+
+            code_p1, data_p1 = call_api("GET", "/api/v1/analytics/topics?search=Topic+sorting+post&sort_by=total_likes&order=desc&limit=1&offset=0")
+            self.assertEqual(code_p1, 200)
+            self.assertEqual(data_p1["limit"], 1)
+            self.assertEqual(data_p1["offset"], 0)
+            self.assertEqual(len(data_p1["items"]), 1)
+            self.assertEqual(data_p1["items"][0]["topic_name"], "topic_api_sort_high")
+
+            code_p2, data_p2 = call_api("GET", "/api/v1/analytics/topics?search=Topic+sorting+post&sort_by=total_likes&order=desc&limit=1&offset=1")
+            self.assertEqual(code_p2, 200)
+            self.assertEqual(data_p2["limit"], 1)
+            self.assertEqual(data_p2["offset"], 1)
+            self.assertEqual(len(data_p2["items"]), 1)
+            self.assertEqual(data_p2["items"][0]["topic_name"], "topic_api_sort_low")
+        finally:
+            db.query(PostMetric).filter(PostMetric.post_id.in_([p1.id, p2.id])).delete(synchronize_session=False)
+            db.query(PostTopic).filter(PostTopic.post_id.in_([p1.id, p2.id])).delete(synchronize_session=False)
+            db.query(Post).filter(Post.id.in_([p1.id, p2.id])).delete(synchronize_session=False)
+            db.query(Topic).filter(Topic.id.in_([topic1.id, topic2.id])).delete(synchronize_session=False)
+            db.query(User).filter(User.id == u.id).delete()
+            db.commit()
+            db.close()
+
+    def test_49_get_topics_endpoint_validation_errors(self):
+        code_sort, data_sort = call_api("GET", "/api/v1/analytics/topics?sort_by=unsupported_col")
+        self.assertEqual(code_sort, 400)
+        self.assertIn("Invalid sort_by", data_sort.get("detail", ""))
+
+        code_ord, data_ord = call_api("GET", "/api/v1/analytics/topics?order=sideways")
+        self.assertEqual(code_ord, 400)
+        self.assertIn("Invalid order", data_ord.get("detail", ""))
+
+        code_date, data_date = call_api("GET", "/api/v1/analytics/topics?start_date=2026-12-01T00:00:00&end_date=2026-01-01T00:00:00")
+        self.assertEqual(code_date, 400)
+        self.assertIn("start_date cannot be after end_date", data_date.get("detail", ""))
+
+        code_lim, _ = call_api("GET", "/api/v1/analytics/topics?limit=0")
+        self.assertEqual(code_lim, 422)
+
+        code_lim2, _ = call_api("GET", "/api/v1/analytics/topics?limit=201")
+        self.assertEqual(code_lim2, 422)
+
+        code_off, _ = call_api("GET", "/api/v1/analytics/topics?offset=-1")
+        self.assertEqual(code_off, 422)
 
 
 if __name__ == "__main__":
