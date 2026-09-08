@@ -492,6 +492,130 @@ class TestAnalyticsService(unittest.TestCase):
         res_too_high = self.service.get_posts(search="Tie breaker metric snapshot test post", min_likes=400)
         self.assertEqual(res_too_high.total, 0)
 
+    # --- Component 8.3: Dynamic analytics sorting ---
+
+    def test_35_sort_by_posted_at_desc(self):
+        result = self.service.get_posts(sort_by="posted_at", order="desc", limit=20)
+        self.assertGreater(len(result.items), 1)
+        for i in range(len(result.items) - 1):
+            self.assertGreaterEqual(result.items[i].posted_at, result.items[i + 1].posted_at)
+
+    def test_36_sort_by_posted_at_asc(self):
+        result = self.service.get_posts(sort_by="posted_at", order="asc", limit=20)
+        self.assertGreater(len(result.items), 1)
+        for i in range(len(result.items) - 1):
+            self.assertLessEqual(result.items[i].posted_at, result.items[i + 1].posted_at)
+
+    def test_37_sort_by_likes_desc(self):
+        result = self.service.get_posts(sort_by="likes", order="desc", limit=20)
+        self.assertGreater(len(result.items), 1)
+        for i in range(len(result.items) - 1):
+            l1 = result.items[i].metrics.likes if result.items[i].metrics else 0
+            l2 = result.items[i + 1].metrics.likes if result.items[i + 1].metrics else 0
+            self.assertGreaterEqual(l1, l2)
+
+    def test_38_sort_by_comments(self):
+        desc_res = self.service.get_posts(sort_by="comments", order="desc", limit=20)
+        self.assertGreater(len(desc_res.items), 1)
+        for i in range(len(desc_res.items) - 1):
+            c1 = desc_res.items[i].metrics.comments if desc_res.items[i].metrics else 0
+            c2 = desc_res.items[i + 1].metrics.comments if desc_res.items[i + 1].metrics else 0
+            self.assertGreaterEqual(c1, c2)
+
+        asc_res = self.service.get_posts(sort_by="comments", order="asc", limit=20)
+        self.assertGreater(len(asc_res.items), 1)
+        for i in range(len(asc_res.items) - 1):
+            c1 = asc_res.items[i].metrics.comments if asc_res.items[i].metrics else 0
+            c2 = asc_res.items[i + 1].metrics.comments if asc_res.items[i + 1].metrics else 0
+            self.assertLessEqual(c1, c2)
+
+    def test_39_sort_by_shares(self):
+        desc_res = self.service.get_posts(sort_by="shares", order="desc", limit=20)
+        self.assertGreater(len(desc_res.items), 1)
+        for i in range(len(desc_res.items) - 1):
+            s1 = desc_res.items[i].metrics.shares if desc_res.items[i].metrics else 0
+            s2 = desc_res.items[i + 1].metrics.shares if desc_res.items[i + 1].metrics else 0
+            self.assertGreaterEqual(s1, s2)
+
+    def test_40_sort_by_views(self):
+        desc_res = self.service.get_posts(sort_by="views", order="desc", limit=20)
+        self.assertGreater(len(desc_res.items), 1)
+        for i in range(len(desc_res.items) - 1):
+            v1 = desc_res.items[i].metrics.views if desc_res.items[i].metrics else 0
+            v2 = desc_res.items[i + 1].metrics.views if desc_res.items[i + 1].metrics else 0
+            self.assertGreaterEqual(v1, v2)
+
+    def test_41_sort_combined_with_search(self):
+        result = self.service.get_posts(search="infrastructure", sort_by="likes", order="desc")
+        self.assertGreater(len(result.items), 0)
+        for i in range(len(result.items)):
+            self.assertIn("infrastructure", result.items[i].text.lower())
+            if i < len(result.items) - 1:
+                l1 = result.items[i].metrics.likes if result.items[i].metrics else 0
+                l2 = result.items[i + 1].metrics.likes if result.items[i + 1].metrics else 0
+                self.assertGreaterEqual(l1, l2)
+
+    def test_42_sort_combined_with_platform(self):
+        result = self.service.get_posts(platform="X", sort_by="posted_at", order="asc")
+        self.assertGreater(len(result.items), 0)
+        for i in range(len(result.items)):
+            self.assertEqual(result.items[i].platform, "X")
+            if i < len(result.items) - 1:
+                self.assertLessEqual(result.items[i].posted_at, result.items[i + 1].posted_at)
+
+    def test_43_sort_combined_with_min_likes(self):
+        result = self.service.get_posts(min_likes=5, sort_by="likes", order="asc")
+        self.assertGreater(len(result.items), 0)
+        for i in range(len(result.items)):
+            likes = result.items[i].metrics.likes if result.items[i].metrics else 0
+            self.assertGreaterEqual(likes, 5)
+            if i < len(result.items) - 1:
+                next_likes = result.items[i + 1].metrics.likes if result.items[i + 1].metrics else 0
+                self.assertLessEqual(likes, next_likes)
+
+    def test_44_deterministic_ordering_when_values_equal(self):
+        t = datetime(2026, 9, 1, 12, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            external_post_id="tie_p1",
+            text="Deterministic tie breaker test post 1",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            external_post_id="tie_p2",
+            text="Deterministic tie breaker test post 2",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t, likes=777)
+        m2 = PostMetric(post_id=p2.id, collected_at=t, likes=777)
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        # Descending: higher id comes first
+        res_desc = self.service.get_posts(search="Deterministic tie breaker test post", sort_by="likes", order="desc")
+        self.assertEqual(len(res_desc.items), 2)
+        self.assertGreater(res_desc.items[0].id, res_desc.items[1].id)
+
+        # Ascending: lower id comes first
+        res_asc = self.service.get_posts(search="Deterministic tie breaker test post", sort_by="likes", order="asc")
+        self.assertEqual(len(res_asc.items), 2)
+        self.assertLess(res_asc.items[0].id, res_asc.items[1].id)
+
+    def test_45_invalid_sort_field_service_validation(self):
+        with self.assertRaises(ValueError):
+            self.service.get_posts(sort_by="invalid_col")
+        with self.assertRaises(ValueError):
+            self.service.get_posts(order="invalid_dir")
+
 
 class TestAnalyticsAPI(unittest.TestCase):
     """
@@ -712,6 +836,64 @@ class TestAnalyticsAPI(unittest.TestCase):
     def test_31_negative_min_views_rejected(self):
         code, _ = call_api("GET", "/api/v1/analytics/posts?min_views=-100")
         self.assertEqual(code, 422)
+
+    # --- Component 8.3: Dynamic analytics sorting API tests ---
+
+    def test_32_sort_by_likes_desc_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?sort_by=likes&order=desc&limit=10")
+        self.assertEqual(code, 200)
+        self.assertIn("items", data)
+        items = data["items"]
+        self.assertGreater(len(items), 1)
+        for i in range(len(items) - 1):
+            l1 = items[i]["metrics"]["likes"] if items[i].get("metrics") else 0
+            l2 = items[i + 1]["metrics"]["likes"] if items[i + 1].get("metrics") else 0
+            self.assertGreaterEqual(l1, l2)
+
+    def test_33_sort_by_posted_at_asc_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?sort_by=posted_at&order=asc&limit=10")
+        self.assertEqual(code, 200)
+        self.assertIn("items", data)
+        items = data["items"]
+        self.assertGreater(len(items), 1)
+        for i in range(len(items) - 1):
+            self.assertLessEqual(items[i]["posted_at"], items[i + 1]["posted_at"])
+
+    def test_34_sort_by_shares_desc_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?sort_by=shares&order=desc&limit=10")
+        self.assertEqual(code, 200)
+        self.assertIn("items", data)
+        items = data["items"]
+        self.assertGreater(len(items), 1)
+        for i in range(len(items) - 1):
+            s1 = items[i]["metrics"]["shares"] if items[i].get("metrics") else 0
+            s2 = items[i + 1]["metrics"]["shares"] if items[i + 1].get("metrics") else 0
+            self.assertGreaterEqual(s1, s2)
+
+    def test_35_invalid_sort_by_rejected(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?sort_by=random_column")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid sort_by", data.get("detail", ""))
+
+    def test_36_invalid_order_rejected(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?order=diagonal")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid order", data.get("detail", ""))
+
+    def test_37_sort_combined_with_filters_endpoint(self):
+        code, data = call_api("GET", "/api/v1/analytics/posts?platform=YouTube&min_views=1&sort_by=views&order=desc")
+        self.assertEqual(code, 200)
+        self.assertIn("items", data)
+        items = data["items"]
+        self.assertGreater(len(items), 0)
+        for i in range(len(items)):
+            self.assertEqual(items[i]["platform"], "YouTube")
+            self.assertIsNotNone(items[i].get("metrics"))
+            self.assertGreaterEqual(items[i]["metrics"]["views"], 1)
+            if i < len(items) - 1:
+                v1 = items[i]["metrics"]["views"]
+                v2 = items[i + 1]["metrics"]["views"] if items[i + 1].get("metrics") else 0
+                self.assertGreaterEqual(v1, v2)
 
 
 if __name__ == "__main__":

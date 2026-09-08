@@ -37,6 +37,10 @@ def _normalize_datetime_for_db(value: Optional[datetime]) -> Optional[datetime]:
     return value
 
 
+ALLOWED_SORT_BY = {"posted_at", "likes", "comments", "shares", "views"}
+ALLOWED_ORDER = {"asc", "desc"}
+
+
 class AnalyticsService:
     """
     Dedicated read-only query service for social-media analytics and ML/NLP pipelines.
@@ -53,7 +57,7 @@ class AnalyticsService:
         Builds a subquery that, for each post, surfaces the latest metric snapshot's
         likes/comments/shares/views based on collected_at (with id as tie-breaker),
         defaulting nulls to 0 via COALESCE.
-        Used for engagement filtering.
+        Used for engagement filtering and sorting.
         """
         ranked_metrics = (
             self.db.query(
@@ -96,6 +100,7 @@ class AnalyticsService:
         min_comments: Optional[int] = None,
         min_shares: Optional[int] = None,
         min_views: Optional[int] = None,
+        metric_subquery: Optional[Any] = None,
     ):
         """Applies standardized query filters across post queries."""
         if platform and platform.strip():
@@ -121,28 +126,29 @@ class AnalyticsService:
         if search and search.strip():
             query = query.filter(Post.text.ilike(f"%{search.strip()}%"))
 
-        # Engagement filters — join latest-metric subquery only when needed
+        # Engagement filters & sorting join — join latest-metric subquery only when needed
         engagement_requested = any(
             v is not None for v in (min_likes, min_comments, min_shares, min_views)
         )
-        if engagement_requested:
-            metric_sq = self._latest_metric_subquery()
-            query = query.outerjoin(metric_sq, Post.id == metric_sq.c.post_id)
+        if engagement_requested or metric_subquery is not None:
+            if metric_subquery is None:
+                metric_subquery = self._latest_metric_subquery()
+            query = query.outerjoin(metric_subquery, Post.id == metric_subquery.c.post_id)
             if min_likes is not None:
                 query = query.filter(
-                    func.coalesce(metric_sq.c.likes, 0) >= min_likes
+                    func.coalesce(metric_subquery.c.likes, 0) >= min_likes
                 )
             if min_comments is not None:
                 query = query.filter(
-                    func.coalesce(metric_sq.c.comments, 0) >= min_comments
+                    func.coalesce(metric_subquery.c.comments, 0) >= min_comments
                 )
             if min_shares is not None:
                 query = query.filter(
-                    func.coalesce(metric_sq.c.shares, 0) >= min_shares
+                    func.coalesce(metric_subquery.c.shares, 0) >= min_shares
                 )
             if min_views is not None:
                 query = query.filter(
-                    func.coalesce(metric_sq.c.views, 0) >= min_views
+                    func.coalesce(metric_subquery.c.views, 0) >= min_views
                 )
 
         return query
@@ -159,12 +165,35 @@ class AnalyticsService:
         min_comments: Optional[int] = None,
         min_shares: Optional[int] = None,
         min_views: Optional[int] = None,
+        sort_by: str = "posted_at",
+        order: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> PostListResponse:
         """
         Retrieves a paginated, deterministically ordered list of posts with latest metrics.
+        Supports sorting by posted_at or latest snapshot engagement metrics.
         """
+        # Validate sort parameters
+        clean_sort_by = (sort_by or "posted_at").strip().lower()
+        if clean_sort_by not in ALLOWED_SORT_BY:
+            raise ValueError(
+                f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_SORT_BY))}."
+            )
+
+        clean_order = (order or "desc").strip().lower()
+        if clean_order not in ALLOWED_ORDER:
+            raise ValueError(
+                f"Invalid order '{order}'. Supported orders: {', '.join(sorted(ALLOWED_ORDER))}."
+            )
+
+        is_desc = (clean_order == "desc")
+        needs_metric_subq = (
+            clean_sort_by in ("likes", "comments", "shares", "views")
+            or any(v is not None for v in (min_likes, min_comments, min_shares, min_views))
+        )
+        metric_sq = self._latest_metric_subquery() if needs_metric_subq else None
+
         # Base query for counting
         base_query = self.db.query(Post)
         filtered_query = self._apply_filters(
@@ -179,13 +208,30 @@ class AnalyticsService:
             min_comments=min_comments,
             min_shares=min_shares,
             min_views=min_views,
+            metric_subquery=metric_sq,
         )
 
         total = filtered_query.count()
 
+        # Build deterministic ordering
+        if clean_sort_by == "posted_at":
+            primary_col = Post.posted_at.desc() if is_desc else Post.posted_at.asc()
+            tie_breaker = Post.id.desc() if is_desc else Post.id.asc()
+            order_by_clauses = [primary_col, tie_breaker]
+        else:
+            metric_col = getattr(metric_sq.c, clean_sort_by)
+            primary_col = (
+                func.coalesce(metric_col, 0).desc()
+                if is_desc
+                else func.coalesce(metric_col, 0).asc()
+            )
+            secondary_col = Post.posted_at.desc() if is_desc else Post.posted_at.asc()
+            tie_breaker = Post.id.desc() if is_desc else Post.id.asc()
+            order_by_clauses = [primary_col, secondary_col, tie_breaker]
+
         # Deterministic ordering and pagination
         posts = (
-            filtered_query.order_by(Post.posted_at.desc(), Post.id.desc())
+            filtered_query.order_by(*order_by_clauses)
             .offset(offset)
             .limit(limit)
             .all()

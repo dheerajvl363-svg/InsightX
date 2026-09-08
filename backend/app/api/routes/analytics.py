@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Analytics"])
 
 
+ALLOWED_SORT_BY = {"posted_at", "likes", "comments", "shares", "views"}
+ALLOWED_ORDER = {"asc", "desc"}
+
+
 def validate_date_range(start: Optional[datetime], end: Optional[datetime]):
     """Helper to ensure start_date <= end_date."""
     if start and end and start > end:
@@ -30,11 +34,30 @@ def validate_date_range(start: Optional[datetime], end: Optional[datetime]):
         )
 
 
+def validate_sort_params(sort_by: Optional[str], order: Optional[str]) -> tuple[str, str]:
+    """Helper to validate sort_by and order query parameters."""
+    clean_sort_by = (sort_by or "posted_at").strip().lower()
+    if clean_sort_by not in ALLOWED_SORT_BY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_SORT_BY))}.",
+        )
+
+    clean_order = (order or "desc").strip().lower()
+    if clean_order not in ALLOWED_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid order '{order}'. Supported orders: {', '.join(sorted(ALLOWED_ORDER))}.",
+        )
+
+    return clean_sort_by, clean_order
+
+
 @router.get(
     "/posts",
     response_model=PostListResponse,
     summary="Query posts for analytics & NLP",
-    description="Returns paginated posts with deterministic ordering and optional search, platform, language, author, and date filters.",
+    description="Returns paginated posts with deterministic ordering and optional search, platform, language, author, date, engagement, and sorting filters.",
 )
 def get_posts(
     platform: Optional[str] = Query(None, description="Filter by platform name (e.g. 'X', 'Telegram')"),
@@ -47,11 +70,14 @@ def get_posts(
     min_comments: Optional[int] = Query(None, ge=0, description="Minimum comments (latest metric snapshot)"),
     min_shares: Optional[int] = Query(None, ge=0, description="Minimum shares (latest metric snapshot)"),
     min_views: Optional[int] = Query(None, ge=0, description="Minimum views (latest metric snapshot)"),
+    sort_by: Optional[str] = Query("posted_at", description="Field to sort by ('posted_at', 'likes', 'comments', 'shares', 'views')"),
+    order: Optional[str] = Query("desc", description="Sort order ('asc' or 'desc')"),
     limit: int = Query(50, ge=1, le=200, description="Max posts to return (1-200)"),
     offset: int = Query(0, ge=0, description="Offset position for pagination"),
     db: Session = Depends(get_db),
 ) -> PostListResponse:
     validate_date_range(start_date, end_date)
+    clean_sort_by, clean_order = validate_sort_params(sort_by, order)
     try:
         service = AnalyticsService(db)
         return service.get_posts(
@@ -65,8 +91,17 @@ def get_posts(
             min_comments=min_comments,
             min_shares=min_shares,
             min_views=min_views,
+            sort_by=clean_sort_by,
+            order=clean_order,
             limit=limit,
             offset=offset,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
     except Exception as e:
         logger.error(f"Error querying posts: {e}", exc_info=True)
