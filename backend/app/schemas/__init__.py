@@ -67,6 +67,17 @@ from app.schemas.trend import (
     TrendDirection,
 )
 
+from app.schemas.analytics_engine import (
+    EngagementScoreBreakdown,
+    IntervalUnit,
+    NarrativeIntelligence,
+    NarrativeLifecycleStage,
+    NarrativeTrajectoryMetrics,
+    Phase4AnalyticsReport,
+    TemporalDynamicsReport,
+    TimeSeriesBucket,
+)
+
 __all__ = [
     "RawPostPayload",
     "PostMetricsSchema",
@@ -118,4 +129,12 @@ __all__ = [
     "DemographicAnalyzeRequest",
     "CombinedAnalyzeRequest",
     "CombinedAnalyticsResponse",
+    "IntervalUnit",
+    "NarrativeLifecycleStage",
+    "EngagementScoreBreakdown",
+    "TimeSeriesBucket",
+    "TemporalDynamicsReport",
+    "NarrativeTrajectoryMetrics",
+    "NarrativeIntelligence",
+    "Phase4AnalyticsReport",
 ]
