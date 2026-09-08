@@ -526,6 +526,11 @@ def _resolve_analytics_posts(
     quality_svc = quality_service or get_data_quality_service()
 
     if posts is not None:
+        if len(posts) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty post list provided for analysis.",
+            )
         for p in posts:
             if not isinstance(p, AnalyticsReadyPost):
                 raise HTTPException(
@@ -535,6 +540,11 @@ def _resolve_analytics_posts(
         return posts
 
     if raw_posts is not None:
+        if len(raw_posts) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty post list provided for analysis.",
+            )
         normalized = [DataNormalizer.normalize(p) for p in raw_posts]
         batch_result = quality_svc.validate_batch(normalized)
         if batch_result.valid_count == 0 and len(raw_posts) > 0:
@@ -543,6 +553,7 @@ def _resolve_analytics_posts(
                 detail="All submitted raw posts failed data quality validation.",
             )
         return batch_result.valid_posts
+
 
     if text is not None and text.strip():
         raw = RawPostPayload(
@@ -771,9 +782,19 @@ def analyze_all(
         ready_posts: List[AnalyticsReadyPost] = []
 
         if payload.posts is not None:
+            if len(payload.posts) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Empty post list provided for analysis.",
+                )
             ready_posts = payload.posts
             total_eval = len(ready_posts)
         elif payload.raw_posts is not None:
+            if len(payload.raw_posts) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Empty post list provided for analysis.",
+                )
             total_eval = len(payload.raw_posts)
             normalized = [DataNormalizer.normalize(p) for p in payload.raw_posts]
             quality_batch = quality_service.validate_batch(normalized)
@@ -783,6 +804,7 @@ def analyze_all(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No post content provided for analysis. Please provide 'posts' or 'raw_posts'.",
             )
+
 
         # 1. Sentiment
         sentiment_res: Optional[BatchSentimentResult] = None
