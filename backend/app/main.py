@@ -11,6 +11,7 @@ from app.api.routes.analytics import router as analytics_router
 from app.api.routes.analytics_engine import router as analytics_engine_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingestion import router as ingestion_router
+from app.api.routes.intelligence import router as intelligence_router
 from app.api.routes.platforms import router as platforms_router
 from app.api.routes.posts import router as posts_router
 from app.api.routes.timeline import router as timeline_router
@@ -100,6 +101,9 @@ app.include_router(timeline_router, prefix="/api/v1/timeline")
 app.include_router(ingestion_router, prefix="/api/v1/ingestion")
 app.include_router(analytics_router, prefix="/api/v1/analytics")
 app.include_router(analytics_engine_router, prefix="/api/v1/analytics/engine")
+
+# --- Phase 7.2.4: Intelligence router ---
+app.include_router(intelligence_router, prefix="/api/v1/intelligence")
 
 
 
