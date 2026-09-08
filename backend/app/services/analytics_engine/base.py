@@ -4,14 +4,19 @@ from datetime import datetime
 
 from app.schemas.analytics_engine import (
     DetailedEngagementReport,
+    DetailedNarrativeReport,
     DetailedSentimentReport,
     DetailedTrendReport,
     EngagementDistribution,
     EngagementScoreBreakdown,
     IntervalUnit,
     NarrativeIntelligence,
+    NarrativeLifecycleStage,
+    NarrativePlatformDistribution,
+    NarrativeTrajectoryMetrics,
     Phase4AnalyticsReport,
     PlatformComparativeReport,
+    PlatformEngagementComparison,
     PlatformSentimentSummary,
     PlatformTrendSummary,
     PostEngagementProfile,
@@ -19,8 +24,10 @@ from app.schemas.analytics_engine import (
     SentimentDistributionSummary,
     TemporalDynamicsReport,
     TemporalSentimentPoint,
+    TimeSeriesBucket,
     TrendItemProfile,
     TrendMomentumMetrics,
+    ViralityAnalytics,
 )
 
 
@@ -89,6 +96,17 @@ class BaseNarrativeEngine(ABC):
         split_ratio: float = 0.5,
     ) -> List[NarrativeIntelligence]:
         """Analyze topic lifecycle stages, velocity, acceleration, and sentiment drift."""
+        pass
+
+    @abstractmethod
+    def generate_detailed_report(
+        self,
+        posts: List[Any],
+        topics: Optional[List[Any]] = None,
+        reference_time: Optional[datetime] = None,
+        split_ratio: float = 0.5,
+    ) -> DetailedNarrativeReport:
+        """Generate comprehensive Phase 4.5 narrative analysis and intelligence report."""
         pass
 
 

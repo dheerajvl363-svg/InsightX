@@ -136,6 +136,17 @@ class NarrativeTrajectoryMetrics(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class NarrativePlatformDistribution(BaseModel):
+    """Platform-specific representation and engagement within a narrative."""
+    platform: str = Field(..., description="Platform identifier")
+    post_count: int = Field(default=0, ge=0, description="Posts on platform for this narrative")
+    engagement_score: float = Field(default=0.0, ge=0.0, description="Total weighted engagement on platform")
+    avg_sentiment_polarity: Optional[float] = Field(default=None, description="Mean sentiment polarity on platform")
+    share_percentage: float = Field(default=0.0, ge=0.0, description="Percentage share of total narrative posts")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class NarrativeIntelligence(BaseModel):
     """Structured narrative intelligence unit combining topics, lifecycle, and dynamics."""
     topic_id: str = Field(..., description="Unique topic or cluster identifier")
@@ -154,6 +165,24 @@ class NarrativeIntelligence(BaseModel):
     )
     dominant_sentiment: Optional[str] = Field(default=None, description="Dominant sentiment polarity")
     dominant_emotion: Optional[str] = Field(default=None, description="Dominant emotional profile")
+    total_engagement: float = Field(default=0.0, ge=0.0, description="Cumulative weighted engagement across narrative")
+    avg_post_engagement: float = Field(default=0.0, ge=0.0, description="Average weighted engagement per narrative post")
+    virality_index: float = Field(default=0.0, ge=0.0, description="Virality ratio across narrative")
+    avg_sentiment_polarity: float = Field(default=0.0, description="Mean sentiment polarity across narrative posts")
+    net_sentiment_score: float = Field(default=0.0, description="Net sentiment score (Pos - Neg) / Total")
+    positive_percentage: float = Field(default=0.0, ge=0.0, description="Percentage of positive posts in narrative")
+    negative_percentage: float = Field(default=0.0, ge=0.0, description="Percentage of negative posts in narrative")
+    neutral_percentage: float = Field(default=0.0, ge=0.0, description="Percentage of neutral posts in narrative")
+    narrative_impact_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Multi-factor impact score combining volume, velocity, engagement, and sentiment intensity"
+    )
+    platforms: List[str] = Field(default_factory=list, description="Platforms carrying this narrative")
+    platform_breakdown: Dict[str, NarrativePlatformDistribution] = Field(
+        default_factory=dict,
+        description="Per-platform narrative distributions"
+    )
     sample_post_ids: List[str] = Field(default_factory=list, description="IDs of representative posts")
 
     model_config = ConfigDict(from_attributes=True)
@@ -434,6 +463,39 @@ class DetailedTrendReport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DetailedNarrativeReport(BaseModel):
+    """Comprehensive Phase 4.5 Narrative Analysis and Intelligence report."""
+    total_narratives_evaluated: int = Field(default=0, ge=0, description="Total unique narrative clusters analyzed")
+    emerging_count: int = Field(default=0, ge=0, description="Count of emerging narratives")
+    accelerating_count: int = Field(default=0, ge=0, description="Count of accelerating narratives")
+    peak_count: int = Field(default=0, ge=0, description="Count of peak narratives")
+    sustained_count: int = Field(default=0, ge=0, description="Count of sustained narratives")
+    decaying_count: int = Field(default=0, ge=0, description="Count of decaying narratives")
+    dormant_count: int = Field(default=0, ge=0, description="Count of dormant narratives")
+    ranked_narratives: List[NarrativeIntelligence] = Field(
+        default_factory=list,
+        description="Ranked list of narratives ordered by impact score descending"
+    )
+    dominant_narrative: Optional[NarrativeIntelligence] = Field(
+        default=None,
+        description="Highest impact narrative in discourse"
+    )
+    fastest_growing_narrative: Optional[NarrativeIntelligence] = Field(
+        default=None,
+        description="Narrative with highest positive volume velocity"
+    )
+    highest_engagement_narrative: Optional[NarrativeIntelligence] = Field(
+        default=None,
+        description="Narrative generating highest cumulative engagement"
+    )
+    cross_platform_narratives: List[NarrativeIntelligence] = Field(
+        default_factory=list,
+        description="Narratives present across 2 or more platforms"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Phase4AnalyticsReport(BaseModel):
     """Comprehensive high-level analytical intelligence report produced by Phase 4 Engine."""
     total_posts_evaluated: int = Field(..., ge=0, description="Number of posts evaluated")
@@ -467,6 +529,10 @@ class Phase4AnalyticsReport(BaseModel):
     detailed_trends: Optional[DetailedTrendReport] = Field(
         default=None,
         description="Extended Phase 4.4 multi-dimensional trend momentum analysis"
+    )
+    detailed_narratives: Optional[DetailedNarrativeReport] = Field(
+        default=None,
+        description="Extended Phase 4.5 multi-dimensional narrative intelligence analysis"
     )
     summary_insights: List[str] = Field(
         default_factory=list,

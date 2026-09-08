@@ -69,6 +69,7 @@ from app.schemas.trend import (
 
 from app.schemas.analytics_engine import (
     DetailedEngagementReport,
+    DetailedNarrativeReport,
     DetailedSentimentReport,
     DetailedTrendReport,
     DiscussionDepthAnalytics,
@@ -77,6 +78,7 @@ from app.schemas.analytics_engine import (
     IntervalUnit,
     NarrativeIntelligence,
     NarrativeLifecycleStage,
+    NarrativePlatformDistribution,
     NarrativeTrajectoryMetrics,
     Phase4AnalyticsReport,
     PlatformComparativeReport,
@@ -152,6 +154,8 @@ __all__ = [
     "TemporalDynamicsReport",
     "NarrativeTrajectoryMetrics",
     "NarrativeIntelligence",
+    "NarrativePlatformDistribution",
+    "DetailedNarrativeReport",
     "Phase4AnalyticsReport",
     "EngagementDistribution",
     "PostEngagementProfile",

@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from app.schemas.analytics_engine import (
     DetailedEngagementReport,
+    DetailedNarrativeReport,
     DetailedSentimentReport,
     DetailedTrendReport,
     EngagementScoreBreakdown,
@@ -40,13 +41,16 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         trend_engine: Optional[TrendAnalyticsEngine] = None,
     ) -> None:
         self.engagement_engine = engagement_engine or EngagementEngine()
+        self.sentiment_engine = sentiment_engine or SentimentAnalyticsEngine()
         self.time_series_engine = (
             time_series_engine or TimeSeriesDynamicsEngine(engagement_engine=self.engagement_engine)
         )
         self.narrative_engine = (
-            narrative_engine or NarrativeDynamicsEngine(engagement_engine=self.engagement_engine)
+            narrative_engine or NarrativeDynamicsEngine(
+                engagement_engine=self.engagement_engine,
+                sentiment_engine=self.sentiment_engine,
+            )
         )
-        self.sentiment_engine = sentiment_engine or SentimentAnalyticsEngine()
         self.trend_engine = trend_engine or TrendAnalyticsEngine(engagement_engine=self.engagement_engine)
 
     def _generate_summary_insights(
@@ -57,6 +61,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         platforms: Dict[str, EngagementScoreBreakdown],
         sentiment: Optional[DetailedSentimentReport] = None,
         trends: Optional[DetailedTrendReport] = None,
+        detailed_narratives: Optional[DetailedNarrativeReport] = None,
     ) -> List[str]:
         """Generate structured text insights summarizing key analytical findings."""
         insights: List[str] = []
@@ -106,6 +111,41 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                     + ", ".join(f"'{t.name}'" for t in trends.top_spiking_trends[:3])
                 )
 
+        # Narrative Intelligence insight (Phase 4.5)
+        if detailed_narratives and detailed_narratives.ranked_narratives:
+            dominant_n = detailed_narratives.dominant_narrative or detailed_narratives.ranked_narratives[0]
+            stage_desc = dominant_n.lifecycle_stage.value.upper()
+            insights.append(
+                f"Leading narrative is '{dominant_n.label}' ({dominant_n.post_count} posts, "
+                f"Impact Score: {dominant_n.narrative_impact_score:,.1f}, Stage: {stage_desc})."
+            )
+
+            if detailed_narratives.fastest_growing_narrative and detailed_narratives.fastest_growing_narrative.trajectory.volume_velocity > 0:
+                fast_n = detailed_narratives.fastest_growing_narrative
+                insights.append(
+                    f"Fastest accelerating narrative: '{fast_n.label}' "
+                    f"(Velocity: +{fast_n.trajectory.volume_velocity:.1f} posts/window)."
+                )
+
+            if detailed_narratives.cross_platform_narratives:
+                cp_count = len(detailed_narratives.cross_platform_narratives)
+                insights.append(
+                    f"Identified {cp_count} multi-platform narrative(s) spanning multiple social ecosystems."
+                )
+
+            if detailed_narratives.emerging_count > 0:
+                emerging_names = [n.label for n in detailed_narratives.ranked_narratives if n.lifecycle_stage == NarrativeLifecycleStage.EMERGING]
+                insights.append(
+                    f"Identified {detailed_narratives.emerging_count} emerging narrative cluster(s): "
+                    + ", ".join(f"'{name}'" for name in emerging_names[:3])
+                )
+        elif narratives:
+            top_narrative = narratives[0]
+            stage_desc = top_narrative.lifecycle_stage.value.upper()
+            insights.append(
+                f"Primary narrative '{top_narrative.label}' ({top_narrative.post_count} posts) is currently {stage_desc}."
+            )
+
         # Temporal peak insight
         if temporal.peak_bucket_start is not None and temporal.peak_bucket_volume > 0:
             peak_fmt = temporal.peak_bucket_start.strftime("%Y-%m-%d %H:%M UTC")
@@ -120,21 +160,6 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                 f"Detected {temporal.anomalous_intervals_count} statistically significant activity spike(s) "
                 f"exceeding the baseline threshold."
             )
-
-        # Narrative lifecycle insight
-        if narratives:
-            top_narrative = narratives[0]
-            stage_desc = top_narrative.lifecycle_stage.value.upper()
-            insights.append(
-                f"Primary narrative '{top_narrative.label}' ({top_narrative.post_count} posts) is currently {stage_desc}."
-            )
-
-            emerging = [n for n in narratives if n.lifecycle_stage == NarrativeLifecycleStage.EMERGING]
-            if emerging:
-                insights.append(
-                    f"Identified {len(emerging)} emerging narrative cluster(s): "
-                    + ", ".join(f"'{n.label}'" for n in emerging[:3])
-                )
 
         # Platform distribution insight
         if len(platforms) > 1:
@@ -175,6 +200,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                 detailed_engagement=None,
                 detailed_sentiment=None,
                 detailed_trends=None,
+                detailed_narratives=None,
                 summary_insights=["No posts provided for analysis."],
             )
 
@@ -204,12 +230,13 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             reference_time=reference_time,
         )
 
-        # 5. Narrative Dynamics & Lifecycles (Phase 4.1)
-        narratives = self.narrative_engine.analyze_narratives(
+        # 5. Narrative Dynamics & Intelligence (Phase 4.1 & 4.5)
+        detailed_narratives = self.narrative_engine.generate_detailed_report(
             posts=posts,
             topics=topics,
             reference_time=reference_time,
         )
+        narratives = detailed_narratives.ranked_narratives
 
         # Determine timestamps bounding window
         timestamps: List[datetime] = []
@@ -229,6 +256,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             platforms=platform_breakdown,
             sentiment=detailed_sentiment,
             trends=detailed_trends,
+            detailed_narratives=detailed_narratives,
         )
 
         return Phase4AnalyticsReport(
@@ -243,5 +271,6 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             detailed_engagement=detailed_engagement,
             detailed_sentiment=detailed_sentiment,
             detailed_trends=detailed_trends,
+            detailed_narratives=detailed_narratives,
             summary_insights=summary_insights,
         )
