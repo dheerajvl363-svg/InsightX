@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.api.errors import setup_exception_handlers
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.analytics_engine import router as analytics_engine_router
 from app.api.routes.health import router as health_router
@@ -41,6 +42,9 @@ app = FastAPI(
     debug=DEBUG,
     lifespan=lifespan,
 )
+
+# --- Phase 5.6: Global exception handlers ---
+setup_exception_handlers(app)
 
 # --- Phase 5.1: versioned v1 API routers ---
 app.include_router(health_router, prefix="/api/v1")
