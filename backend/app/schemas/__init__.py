@@ -124,8 +124,11 @@ from app.schemas.analytics_engine import (
     AnalyticsEngineCapabilitiesResponse,
 )
 from app.schemas.intelligence import (
+    BatchExplanationResult,
     BatchInsightResult,
     InsightEvidence,
+    InsightEvidenceReferences,
+    InsightExplanation,
     InsightItem,
     InsightSeverity,
     InsightStatus,
@@ -134,13 +137,16 @@ from app.schemas.intelligence import (
 )
 
 __all__ = [
-    # --- Phase 7.2.1: intelligence schemas ---
+    # --- Phase 7.2.1 & 7.2.3: intelligence & explanation schemas ---
     "InsightType",
     "InsightSeverity",
     "InsightStatus",
     "InsightEvidence",
+    "InsightEvidenceReferences",
     "InsightItem",
+    "InsightExplanation",
     "BatchInsightResult",
+    "BatchExplanationResult",
     "IntelligenceAnalyzeRequest",
     # --- Phase 5.2: common foundational schemas ---
     "HealthResponse",
