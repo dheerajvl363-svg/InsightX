@@ -123,7 +123,7 @@ class DeterministicIntelligenceEngine(BaseIntelligenceEngine):
 
         # 3. Evaluate Polarized Sentiment Shifts
         if resolved_sentiment:
-            insight = self._evaluate_sentiment_shift(resolved_sentiment)
+            insight = self._evaluate_sentiment_shift(resolved_sentiment, posts=posts)
             if insight and insight.id not in seen_ids:
                 seen_ids.add(insight.id)
                 candidates.append(insight)
@@ -326,7 +326,11 @@ class DeterministicIntelligenceEngine(BaseIntelligenceEngine):
             status=InsightStatus.ACTIVE,
         )
 
-    def _evaluate_sentiment_shift(self, sentiment: BatchSentimentResult) -> Optional[InsightItem]:
+    def _evaluate_sentiment_shift(
+        self,
+        sentiment: BatchSentimentResult,
+        posts: Optional[List[AnalyticsReadyPost]] = None,
+    ) -> Optional[InsightItem]:
         """Detects strong sentiment polarity concentrations or shifts across analyzed posts."""
         if sentiment.total_analyzed < self.min_sentiment_volume:
             return None
@@ -343,10 +347,35 @@ class DeterministicIntelligenceEngine(BaseIntelligenceEngine):
         dominant_sentiment = "negative" if neg_ratio > pos_ratio else "positive"
         score_val = sentiment.average_score
 
+        # Trace supporting post IDs and platforms
+        post_ids = []
+        external_post_ids = []
+        platforms_set = set()
+
+        if sentiment.results:
+            for r in sentiment.results:
+                if r.label == dominant_sentiment:
+                    if r.post_id is not None:
+                        post_ids.append(r.post_id)
+                    if r.external_post_id:
+                        external_post_ids.append(r.external_post_id)
+
+        if posts:
+            for p in posts:
+                if p.platform:
+                    platforms_set.add(p.platform)
+                if not post_ids and p.id is not None:
+                    post_ids.append(p.id)
+                if not external_post_ids and p.external_post_id:
+                    external_post_ids.append(p.external_post_id)
+
         evidence = InsightEvidence(
             sentiment_score=score_val,
             dominant_sentiment=dominant_sentiment,
             current_volume=sentiment.total_analyzed,
+            post_ids=post_ids[:20],
+            external_post_ids=external_post_ids[:20],
+            platforms=sorted(list(platforms_set)),
             raw_signals={
                 "positive_count": sentiment.positive_count,
                 "negative_count": sentiment.negative_count,
@@ -392,6 +421,7 @@ class DeterministicIntelligenceEngine(BaseIntelligenceEngine):
             summary=summary,
             severity=severity,
             confidence=confidence,
+            affected_platforms=sorted(list(platforms_set)),
             evidence=evidence,
             recommended_action="Inspect driver keywords in Emotion & Sentiment radar to determine source of polarity.",
             action_items=[

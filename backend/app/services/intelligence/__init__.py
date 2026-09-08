@@ -8,6 +8,10 @@ from app.services.intelligence.service import (
     IntelligenceAnalysisService,
     get_intelligence_analyzer,
 )
+from app.services.intelligence.workflow import (
+    UnifiedIntelligenceWorkflow,
+    get_unified_workflow,
+)
 
 __all__ = [
     "BaseIntelligenceEngine",
@@ -16,4 +20,6 @@ __all__ = [
     "get_intelligence_analyzer",
     "DeterministicExplanationEngine",
     "get_explanation_engine",
+    "UnifiedIntelligenceWorkflow",
+    "get_unified_workflow",
 ]

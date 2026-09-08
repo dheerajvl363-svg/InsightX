@@ -117,6 +117,7 @@ class IntelligenceAnalyzeRequest(BaseModel):
     platform: Optional[str] = Field(default=None, description="Optional platform filter scoping")
     min_confidence: Optional[float] = Field(default=0.5, ge=0.0, le=1.0, description="Minimum confidence threshold for inclusion")
     max_insights: Optional[int] = Field(default=20, ge=1, le=100, description="Maximum insights to return")
+    include_explanations: Optional[bool] = Field(default=False, description="Whether to synthesize and attach explanations to insights")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -174,6 +175,25 @@ class BatchExplanationResult(BaseModel):
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp of explanation report generation in UTC",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UnifiedWorkflowResult(BaseModel):
+    """
+    Unified end-to-end intelligence result combining multi-facet analytics,
+    detected insights, auditable explanations, and evidence provenance.
+    """
+    total_insights: int = Field(..., ge=0, description="Total number of insights generated")
+    total_explanations: int = Field(default=0, ge=0, description="Total number of explanations generated")
+    batch_insights: BatchInsightResult = Field(..., description="Container of generated intelligence insights")
+    explanations: List[InsightExplanation] = Field(default_factory=list, description="List of generated explanations")
+    analytics_summary: Dict[str, Any] = Field(default_factory=dict, description="Summary telemetry from underlying analytical models")
+    model: str = Field(..., description="Identifier of the unified pipeline engine and version")
+    generated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Timestamp of unified intelligence report generation in UTC",
     )
 
     model_config = ConfigDict(from_attributes=True)
