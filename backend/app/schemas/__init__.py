@@ -14,6 +14,12 @@ from app.schemas.data_quality import (
     DataQualityResult,
     RejectedRecord,
 )
+from app.schemas.emotion import (
+    BatchEmotionResult,
+    EmotionLabel,
+    EmotionProbabilities,
+    EmotionResult,
+)
 from app.schemas.platform import PlatformResponse
 from app.schemas.post import (
     BatchIngestionResponse,
@@ -52,4 +58,8 @@ __all__ = [
     "SentimentProbabilities",
     "SentimentResult",
     "BatchSentimentResult",
+    "EmotionLabel",
+    "EmotionProbabilities",
+    "EmotionResult",
+    "BatchEmotionResult",
 ]
