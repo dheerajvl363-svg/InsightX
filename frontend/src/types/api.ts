@@ -324,3 +324,77 @@ export interface AnalyticsQueryParams {
   limit?: number;
   offset?: number;
 }
+
+// =============================================================================
+// Phase 7.2 Intelligence & AI Layer Schemas (app/schemas/intelligence.py)
+// =============================================================================
+
+export type InsightType =
+  | 'emerging_trend'
+  | 'anomalous_spike'
+  | 'sentiment_shift'
+  | 'cross_platform_propagation'
+  | 'influencer_amplification'
+  | 'narrative_emergence'
+  | 'engagement_surge'
+  | 'data_quality_alert';
+
+export type InsightSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+export type InsightStatus = 'active' | 'investigating' | 'resolved' | 'dismissed';
+
+export interface InsightEvidence {
+  topic_id?: string | null;
+  topic_label?: string | null;
+  growth_rate?: number | null;
+  current_volume?: number | null;
+  baseline_volume?: number | null;
+  z_score?: number | null;
+  sentiment_score?: number | null;
+  dominant_sentiment?: string | null;
+  post_ids?: number[];
+  external_post_ids?: string[];
+  key_authors?: string[];
+  platforms?: string[];
+  time_window?: TimeWindow | null;
+  raw_signals?: Record<string, unknown>;
+}
+
+export interface InsightItem {
+  id: string;
+  type: InsightType;
+  title: string;
+  summary: string;
+  severity: InsightSeverity;
+  confidence: number;
+  affected_topic?: string | null;
+  affected_platforms?: string[];
+  evidence: InsightEvidence;
+  recommended_action?: string | null;
+  action_items?: string[];
+  status: InsightStatus;
+  generated_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BatchInsightResult {
+  total_insights: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  info_count: number;
+  insights: InsightItem[];
+  model: string;
+  generated_at: string;
+}
+
+export interface IntelligenceAnalyzeRequest {
+  posts?: unknown[];
+  raw_posts?: unknown[];
+  topics?: ExtractedTopic[];
+  trends?: TopicTrendResult[];
+  platform?: string;
+  min_confidence?: number;
+  max_insights?: number;
+}
