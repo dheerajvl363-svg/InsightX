@@ -22,6 +22,12 @@ from app.schemas.post import (
     PostMetricsSchema,
     RawPostPayload,
 )
+from app.schemas.sentiment import (
+    BatchSentimentResult,
+    SentimentLabel,
+    SentimentProbabilities,
+    SentimentResult,
+)
 
 __all__ = [
     "RawPostPayload",
@@ -42,4 +48,8 @@ __all__ = [
     "DataQualityResult",
     "RejectedRecord",
     "BatchDataQualityResult",
+    "SentimentLabel",
+    "SentimentProbabilities",
+    "SentimentResult",
+    "BatchSentimentResult",
 ]
