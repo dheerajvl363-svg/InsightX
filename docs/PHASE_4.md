@@ -207,6 +207,8 @@ Narratives represent cohesive conversational themes evolving across time and pla
 - `CrossPlatformTemporalReport`: Cross-platform temporal presence, earliest platform, and peak volume/engagement platform leaders.
 - `TemporalTrajectorySignal`: Heuristic rule-based short-term signal trajectory indicator with explainable rationale.
 - `TemporalDynamicsReport`: Full Phase 4.6 temporal dynamics report combining buckets, baseline comparisons, detected anomalies, platform chronologies, trajectory signals, and temporal insights.
+- `AnalyticsEngineAnalyzeRequest`: Comprehensive API request schema supporting pre-structured posts, raw posts, ad-hoc text, temporal bounds, platform filters, interval granularity, rolling window sizes, and top-k limits.
+- `AnalyticsEngineCapabilitiesResponse`: Operational runtime metadata detailing active analytical engine subsystems, supported intervals, and API capabilities.
 - `Phase4AnalyticsReport`: Comprehensive unified analytical result combining all dimensions with actionable textual summary insights.
 
 ---
@@ -273,7 +275,43 @@ if td.platform_temporal_comparison:
 
 ---
 
-## 7. Test Suite & Quality Verification
+## 7. Phase 4.7 — Analytics API Layer
+
+Phase 4.7 exposes the Analytics Engine capabilities through a clean, versioned, modular FastAPI interface mounted at `/api/v1/analytics/engine`.
+
+### 7.1 Router & Endpoint Architecture
+
+| Route | Method | Request Model | Response Model | Description |
+|---|---|---|---|---|
+| `/api/v1/analytics/engine/health` | `GET` | N/A | `dict` | Lightweight health check probe. |
+| `/api/v1/analytics/engine/capabilities` | `GET` | N/A | `AnalyticsEngineCapabilitiesResponse` | Runtime engine capabilities, supported intervals, and versions. |
+| `/api/v1/analytics/engine/analyze` | `POST` | `AnalyticsEngineAnalyzeRequest` | `Phase4AnalyticsReport` | Full multi-signal Analytics Engine pipeline execution. |
+| `/api/v1/analytics/engine/engagement` | `POST` | `AnalyticsEngineAnalyzeRequest` | `DetailedEngagementReport` | Specialized engagement, virality, and distribution analysis. |
+| `/api/v1/analytics/engine/sentiment` | `POST` | `AnalyticsEngineAnalyzeRequest` | `DetailedSentimentReport` | Specialized polarity, Net Sentiment Score, and drift analysis. |
+| `/api/v1/analytics/engine/trends` | `POST` | `AnalyticsEngineAnalyzeRequest` | `DetailedTrendReport` | Specialized momentum, velocity, and spike trend analysis. |
+| `/api/v1/analytics/engine/narratives` | `POST` | `AnalyticsEngineAnalyzeRequest` | `DetailedNarrativeReport` | Specialized narrative clustering, lifecycle, and impact analysis. |
+| `/api/v1/analytics/engine/time-series` | `POST` | `AnalyticsEngineAnalyzeRequest` | `TemporalDynamicsReport` | Specialized temporal interval dynamics, smoothing, and anomalies. |
+
+### 7.2 Request Model & Validation Rules
+
+- **Flexible Input Sources**: Supports `posts` (pre-structured), `raw_posts` (automatically validated through `DataQualityService`), or `text` (ad-hoc single string).
+- **Date Range Filtering**: `start_time` and `end_time` bounds (validated to ensure `start_time <= end_time`).
+- **Platform Filtering**: `platform_filter` case-insensitive whitelist array.
+- **Interval Granularity**: `interval_unit` enum (`hour`, `day`, `week`).
+- **Smoothing & Outlier Limits**: `rolling_window_size` ($1 \le k \le 100$) and `anomaly_threshold_z` ($0 < z \le 10.0$).
+- **Top-K Truncation**: `top_k` ($1 \le k \le 500$) to restrict ranked trend and narrative arrays.
+
+### 7.3 Dependency Injection & Error Handling
+
+- **Dependency Injection**: Uses FastAPI's `Depends(get_analytics_engine_service)` and `Depends(get_data_quality_service)` to maintain a clean singleton lifecycle without re-instantiating heavy services on each HTTP call.
+- **Predictable Error Responses**:
+  - `400 Bad Request`: Empty datasets, invalid timestamp ranges (`start_time > end_time`), or zero valid posts.
+  - `422 Unprocessable Entity`: Invalid request payloads or schema constraint violations.
+  - `500 Internal Server Error`: Sanitized generic error message with internal stack traces logged securely to prevent information leakage.
+
+---
+
+## 8. Test Suite & Quality Verification
 
 Phase 4 tests cover:
 - Engagement calculations, virality indices, amplification rates, conversation depth, and zero-division safety.
@@ -297,7 +335,8 @@ Phase 4 tests cover:
 - Cross-platform temporal timeline analysis and chronology tracking.
 - Deterministic heuristic trajectory classification (`rapidly_rising`, `rising`, `stable`, `declining`, `rapidly_declining`, `insufficient_data`).
 - Temporal insight generation and full `AnalyticsEngineService` pipeline execution.
+- Phase 4.7 API request validation, date range bounds, platform filtering, specialized endpoints, health/capabilities metadata, and sanitized 500 error handling.
 
 ### Verification Status:
-- **Phase 4 Unit Tests**: 66 / 66 passing across `test_analytics_engine.py`, `test_trend_analytics_engine.py`, `test_narrative_analytics_engine.py`, and `test_time_series_analytics_engine.py`.
-- **Repository Total**: 363 / 363 passing (0 failures, 0 errors).
+- **Phase 4 Unit Tests**: 78 / 78 passing across `test_analytics_engine.py`, `test_trend_analytics_engine.py`, `test_narrative_analytics_engine.py`, `test_time_series_analytics_engine.py`, and `test_analytics_engine_api.py`.
+- **Repository Total**: 375 / 375 passing (0 failures, 0 errors in 1.96s).

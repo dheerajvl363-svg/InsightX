@@ -98,6 +98,8 @@ from app.schemas.analytics_engine import (
     TrendItemProfile,
     TrendMomentumMetrics,
     ViralityAnalytics,
+    AnalyticsEngineAnalyzeRequest,
+    AnalyticsEngineCapabilitiesResponse,
 )
 
 __all__ = [
@@ -182,4 +184,6 @@ __all__ = [
     "PlatformTemporalSeries",
     "CrossPlatformTemporalReport",
     "TemporalTrajectorySignal",
+    "AnalyticsEngineAnalyzeRequest",
+    "AnalyticsEngineCapabilitiesResponse",
 ]

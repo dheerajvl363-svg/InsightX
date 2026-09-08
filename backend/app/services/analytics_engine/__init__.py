@@ -19,7 +19,10 @@ from app.services.analytics_engine.sentiment import (
     SentimentAnalyticsEngine,
     extract_post_text,
 )
-from app.services.analytics_engine.service import AnalyticsEngineService
+from app.services.analytics_engine.service import (
+    AnalyticsEngineService,
+    get_analytics_engine_service,
+)
 from app.services.analytics_engine.time_series import (
     TimeSeriesDynamicsEngine,
     extract_post_sentiment_and_emotion,
@@ -56,4 +59,5 @@ __all__ = [
     "TrendAnalyticsEngine",
     "extract_hashtags_and_keywords",
     "AnalyticsEngineService",
+    "get_analytics_engine_service",
 ]

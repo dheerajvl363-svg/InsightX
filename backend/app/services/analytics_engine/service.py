@@ -284,3 +284,14 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             detailed_narratives=detailed_narratives,
             summary_insights=summary_insights,
         )
+
+
+_analytics_engine_service_instance: Optional[AnalyticsEngineService] = None
+
+
+def get_analytics_engine_service() -> AnalyticsEngineService:
+    """FastAPI dependency provider returning singleton AnalyticsEngineService instance."""
+    global _analytics_engine_service_instance
+    if _analytics_engine_service_instance is None:
+        _analytics_engine_service_instance = AnalyticsEngineService()
+    return _analytics_engine_service_instance

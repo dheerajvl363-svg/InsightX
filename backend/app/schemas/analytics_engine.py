@@ -684,3 +684,98 @@ class Phase4AnalyticsReport(BaseModel):
     )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AnalyticsEngineAnalyzeRequest(BaseModel):
+    """Payload for Phase 4 Analytics Engine analysis requests."""
+    posts: Optional[List[Any]] = Field(
+        default=None,
+        description="Pre-validated analytics-ready post dictionaries or objects"
+    )
+    raw_posts: Optional[List[Any]] = Field(
+        default=None,
+        description="Raw post payloads to be normalized and quality-validated"
+    )
+    text: Optional[str] = Field(
+        default=None,
+        description="Single text string for quick ad-hoc analysis"
+    )
+    start_time: Optional[datetime] = Field(
+        default=None,
+        description="Optional lower bound timestamp for temporal filtering"
+    )
+    end_time: Optional[datetime] = Field(
+        default=None,
+        description="Optional upper bound timestamp for temporal filtering"
+    )
+    reference_time: Optional[datetime] = Field(
+        default=None,
+        description="Optional reference timestamp for trend and narrative momentum split"
+    )
+    platform_filter: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of platform names to filter posts (case-insensitive)"
+    )
+    interval_unit: Optional[IntervalUnit] = Field(
+        default=IntervalUnit.HOUR,
+        description="Temporal interval unit for time-series aggregation ('hour', 'day', 'week')"
+    )
+    rolling_window_size: Optional[int] = Field(
+        default=3,
+        ge=1,
+        le=100,
+        description="Sliding window size for moving-average smoothing"
+    )
+    anomaly_threshold_z: Optional[float] = Field(
+        default=2.0,
+        gt=0.0,
+        le=10.0,
+        description="Z-score threshold for temporal anomaly spike detection"
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=500,
+        description="Optional limit on returned ranked trends and narratives"
+    )
+    topics: Optional[List[Any]] = Field(
+        default=None,
+        description="Optional pre-extracted topics or keyword clusters"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AnalyticsEngineCapabilitiesResponse(BaseModel):
+    """System metadata and operational capabilities of the Phase 4 Analytics Engine."""
+    status: str = Field(default="ok", description="Operational status of the engine service")
+    api_version: str = Field(default="1.0.0", description="Analytics API version")
+    engine_version: str = Field(default="4.7.0", description="Underlying Analytics Engine version")
+    supported_intervals: List[str] = Field(
+        default_factory=lambda: ["hour", "day", "week"],
+        description="Supported time-series interval granularities"
+    )
+    supported_capabilities: List[str] = Field(
+        default_factory=lambda: [
+            "engagement_analytics",
+            "sentiment_analytics",
+            "trend_detection",
+            "narrative_intelligence",
+            "advanced_time_series",
+            "cross_platform_chronology",
+            "temporal_anomaly_detection",
+        ],
+        description="Active analytics engine capabilities"
+    )
+    engines: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "engagement": "EngagementEngine",
+            "sentiment": "SentimentAnalyticsEngine",
+            "trends": "TrendAnalyticsEngine",
+            "narratives": "NarrativeDynamicsEngine",
+            "time_series": "TimeSeriesDynamicsEngine",
+        },
+        description="Registered analytical engine subsystems"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
