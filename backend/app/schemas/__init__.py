@@ -76,6 +76,12 @@ from app.schemas.trend import (
     TopicTrendResult,
     TrendDirection,
 )
+from app.schemas.network import (
+    BatchNetworkResult,
+    NetworkAnalyzeRequest,
+    NetworkEdge,
+    NetworkNode,
+)
 from app.schemas.analytics_engine import (
     CrossPlatformTemporalReport,
     DetailedEngagementReport,

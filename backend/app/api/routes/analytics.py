@@ -34,6 +34,7 @@ from app.schemas.demographic import (
 )
 from app.schemas.emotion import BatchEmotionResult, EmotionResult
 from app.schemas.post import RawPostPayload
+from app.schemas.network import BatchNetworkResult, NetworkAnalyzeRequest
 from app.schemas.sentiment import BatchSentimentResult, SentimentResult
 from app.schemas.topic import BatchTopicResult, ExtractedTopic
 from app.schemas.trend import BatchTrendResult, TopicTrendResult
@@ -46,6 +47,10 @@ from app.services.demographic import (
 from app.services.emotion import (
     EmotionAnalysisService,
     get_emotion_analyzer,
+)
+from app.services.network import (
+    NetworkAnalysisService,
+    get_network_analyzer,
 )
 from app.services.normalizer import DataNormalizer
 from app.services.sentiment import (
@@ -514,6 +519,57 @@ def get_quality_service() -> DataQualityService:
     return get_data_quality_service()
 
 
+def get_network_service() -> NetworkAnalysisService:
+    return get_network_analyzer()
+
+
+def _fetch_db_posts_as_analytics_ready(
+    db: Session,
+    platform: Optional[str] = None,
+    language: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    search: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> List[AnalyticsReadyPost]:
+    validate_date_range(start_date, end_date)
+    analytics_svc = AnalyticsService(db)
+    post_list = analytics_svc.get_posts(
+        platform=platform,
+        language=language,
+        start_time=start_date,
+        end_time=end_date,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    ready_posts: List[AnalyticsReadyPost] = []
+    for item in post_list.items:
+        text_str = item.text or ""
+        if text_str.strip():
+            ready_posts.append(
+                AnalyticsReadyPost(
+                    id=item.id,
+                    platform=item.platform,
+                    external_post_id=item.external_post_id,
+                    text=text_str,
+                    raw_text=text_str,
+                    author_username=item.author_username,
+                    author_display_name=item.author_display_name,
+                    posted_at=item.posted_at,
+                    collected_at=item.collected_at,
+                    url=item.url,
+                    language=item.language,
+                    metrics=item.metrics,
+                    metadata=item.metadata or {},
+                    char_count=len(text_str),
+                    word_count=len(text_str.split()),
+                )
+            )
+    return ready_posts
+
+
 def _resolve_analytics_posts(
     posts: Optional[List[AnalyticsReadyPost]] = None,
     raw_posts: Optional[List[RawPostPayload]] = None,
@@ -863,3 +919,170 @@ def analyze_all(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during unified analytics pipeline execution.",
         )
+
+
+# =====================================================================
+# Database-backed GET variants & Network Analysis
+# =====================================================================
+
+@router.get(
+    "/sentiment",
+    response_model=BatchSentimentResult,
+    summary="Get Sentiment Analysis for Database Posts",
+    description="Retrieves sentiment analysis and distribution for posts stored in the database matching optional filter criteria.",
+)
+def get_sentiment_analytics(
+    platform: Optional[str] = Query(None, description="Filter by platform name"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    limit: int = Query(100, ge=1, le=500, description="Max posts to evaluate (1-500)"),
+    offset: int = Query(0, ge=0, description="Offset position"),
+    db: Session = Depends(get_db),
+    service: SentimentAnalysisService = Depends(get_sentiment_service),
+) -> BatchSentimentResult:
+    try:
+        posts = _fetch_db_posts_as_analytics_ready(
+            db=db,
+            platform=platform,
+            language=language,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+        return service.analyze_batch(posts)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error querying sentiment analytics: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while computing sentiment analytics.",
+        )
+
+
+@router.get(
+    "/trends",
+    response_model=BatchTrendResult,
+    summary="Get Trend Detection for Database Posts",
+    description="Retrieves trend momentum and trajectory analysis for posts stored in the database matching optional filter criteria.",
+)
+def get_trend_analytics(
+    platform: Optional[str] = Query(None, description="Filter by platform name"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    window_duration_seconds: int = Query(3600, ge=60, description="Time window duration in seconds"),
+    limit: int = Query(100, ge=1, le=500, description="Max posts to evaluate (1-500)"),
+    offset: int = Query(0, ge=0, description="Offset position"),
+    db: Session = Depends(get_db),
+    trend_service: TrendAnalysisService = Depends(get_trend_service),
+    topic_service: TopicAnalysisService = Depends(get_topic_service),
+) -> BatchTrendResult:
+    try:
+        posts = _fetch_db_posts_as_analytics_ready(
+            db=db,
+            platform=platform,
+            language=language,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+        topic_res = topic_service.extract_topics(posts)
+        duration = timedelta(seconds=window_duration_seconds)
+        return trend_service.analyze_trends(
+            topics=topic_res.topics,
+            posts=posts,
+            window_duration=duration,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error querying trend analytics: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while computing trend analytics.",
+        )
+
+
+@router.get(
+    "/network",
+    response_model=BatchNetworkResult,
+    summary="Get Network & Influence Analysis for Database Posts",
+    description="Retrieves interaction graph, influencer rankings, and domain sharing summary for database posts matching filters.",
+)
+def get_network_analytics(
+    platform: Optional[str] = Query(None, description="Filter by platform name"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    limit: int = Query(100, ge=1, le=500, description="Max posts to evaluate (1-500)"),
+    offset: int = Query(0, ge=0, description="Offset position"),
+    db: Session = Depends(get_db),
+    network_service: NetworkAnalysisService = Depends(get_network_service),
+) -> BatchNetworkResult:
+    try:
+        posts = _fetch_db_posts_as_analytics_ready(
+            db=db,
+            platform=platform,
+            language=language,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+        return network_service.analyze_batch(posts)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error querying network analytics: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while computing network analytics.",
+        )
+
+
+@router.post(
+    "/network",
+    response_model=BatchNetworkResult,
+    summary="Network & Influence Analysis",
+    description="Computes interaction graph structure, node degrees, author influence rankings, and domain sharing.",
+)
+def analyze_network(
+    payload: NetworkAnalyzeRequest,
+    network_service: NetworkAnalysisService = Depends(get_network_service),
+    quality_service: DataQualityService = Depends(get_quality_service),
+) -> BatchNetworkResult:
+    try:
+        posts = _resolve_analytics_posts(
+            posts=payload.posts,
+            raw_posts=payload.raw_posts,
+            text=payload.text,
+            quality_service=quality_service,
+        )
+        return network_service.analyze_batch(posts)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during network analysis: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during network analysis.",
+        )
+
