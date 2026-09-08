@@ -311,7 +311,56 @@ Phase 4.7 exposes the Analytics Engine capabilities through a clean, versioned, 
 
 ---
 
-## 8. Test Suite & Quality Verification
+## 8. Phase 4.8 — Integration & Quality Hardening
+
+Phase 4.8 hardens, verifies, and solidifies the entire Phase 4 Analytics Engine ecosystem across multi-component pipelines, API serialization, mathematical consistency, and regression resilience.
+
+### 8.1 End-to-End Analytics Pipeline Integration
+
+Comprehensive end-to-end integration tests in `backend/tests/test_phase4_integration.py` validate the entire pipeline lifecycle using realistic, multi-platform datasets (Twitter/X, Reddit, Telegram, YouTube):
+
+```text
+Raw Post Inputs
+      │
+      ▼
+DataNormalizer (Platform canonicalization & metric mapping)
+      │
+      ▼
+DataQualityService (Schema validation & cleaning)
+      │
+      ▼
+AnalyticsEngineService (Unified Orchestrator)
+      ├── EngagementEngine (Scores, virality, amplification, outliers)
+      ├── SentimentAnalyticsEngine (Polarity, NSS, platform & temporal drift)
+      ├── TrendAnalyticsEngine (Velocity, acceleration, momentum, spike detection)
+      ├── NarrativeDynamicsEngine (Theme clustering, 6-stage lifecycle, impact scoring)
+      └── TimeSeriesDynamicsEngine (Hourly/daily buckets, moving averages, anomalies)
+      │
+      ▼
+Phase4AnalyticsReport (Complete Multi-Signal Intelligence Output)
+```
+
+### 8.2 Analytics Consistency Verifications
+
+- **Engagement Consistency**: Total likes, comments, shares, and weighted engagement scores are mathematically consistent across `engagement_analytics`, `detailed_engagement.overall`, and the sum of `platform_breakdown` partitions.
+- **Sentiment Consistency**: Aggregate post counts and Net Sentiment Score in `detailed_sentiment.overall_distribution` align with individual post polarity evaluations ($N_{pos} + N_{neu} + N_{neg} = N_{total}$).
+- **Temporal Consistency**: Sum of discrete post volumes across `temporal_dynamics.buckets` equals total evaluated posts, and cumulative likes equal total likes in the engagement scorecard.
+
+### 8.3 Determinism & Development Performance Sanity Checks
+
+- **Pipeline Determinism**: Executing the exact same dataset consecutively yields identical serialized results, rankings, anomaly flags, and natural language summary insights.
+- **Development Performance Sanity Check**: Empirical evaluation across multi-tier representative datasets (100, 500, and 1,000 posts) completed in $< 0.15\text{s}$ total on development hardware (~0.012s for 100 posts, ~0.049s for 500 posts, and ~0.097s for 1,000 posts), comfortably below generous regression guards ($< 8.0\text{s}$) to guard against accidental infinite loops or quadratic slowdowns.
+  > [!NOTE]
+  > These empirical measurements serve exclusively as a development sanity check and regression guard; they do not constitute formal mathematical proofs or production performance guarantees.
+
+### 8.4 API Contract Validation & Edge-Case Hardening
+
+- **API Contract Validation**: Enforces controlled `400 Bad Request` and `422 Unprocessable Entity` responses for malformed payloads, invalid timestamp formats, reversed ranges (`start_time > end_time`), out-of-bounds `top_k` ($[1, 500]$), out-of-bounds rolling windows ($[1, 100]$), and unsupported interval units, while safely accepting payloads with missing optional fields using documented defaults.
+- **Edge-Case Hardening**: Explicitly exercises missing text, omitted or `None` timestamps, absent metric dictionaries, missing/`None` platforms and authors, identical publishing timestamps, sparse/irregular multi-week intervals, zero variance/baseline, mixed sentiments, single-character strings, hashtag-only posts, emoji-only text, and punctuation-heavy content.
+
+---
+
+## 9. Test Suite & Quality Verification
 
 Phase 4 tests cover:
 - Engagement calculations, virality indices, amplification rates, conversation depth, and zero-division safety.
@@ -336,7 +385,8 @@ Phase 4 tests cover:
 - Deterministic heuristic trajectory classification (`rapidly_rising`, `rising`, `stable`, `declining`, `rapidly_declining`, `insufficient_data`).
 - Temporal insight generation and full `AnalyticsEngineService` pipeline execution.
 - Phase 4.7 API request validation, date range bounds, platform filtering, specialized endpoints, health/capabilities metadata, and sanitized 500 error handling.
+- Phase 4.8 End-to-end multi-platform integration, cross-phase coexistence (Phase 2 ingestion & Phase 3 NLP endpoints), cross-component consistency, edge-case hardening, API contract bounds, determinism verification, and multi-tier performance sanity checks.
 
 ### Verification Status:
-- **Phase 4 Unit Tests**: 78 / 78 passing across `test_analytics_engine.py`, `test_trend_analytics_engine.py`, `test_narrative_analytics_engine.py`, `test_time_series_analytics_engine.py`, and `test_analytics_engine_api.py`.
-- **Repository Total**: 375 / 375 passing (0 failures, 0 errors in 1.96s).
+- **Phase 4 Unit & Integration Tests**: 94 / 94 passing across `test_analytics_engine.py`, `test_trend_analytics_engine.py`, `test_narrative_analytics_engine.py`, `test_time_series_analytics_engine.py`, `test_analytics_engine_api.py`, and `test_phase4_integration.py`.
+- **Repository Total**: 391 / 391 passing (0 failures, 0 errors in 2.20s).
