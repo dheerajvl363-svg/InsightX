@@ -26,7 +26,9 @@ from app.schemas.analytics import (
     TopicListResponse,
     TopicSummary,
 )
+from app.schemas.platform import PlatformResponse
 from app.schemas.post import PostMetricsSchema
+from app.schemas.timeline import TimelineBucket, TimelineResponse
 
 logger = logging.getLogger(__name__)
 
@@ -889,4 +891,121 @@ class AnalyticsService:
             interval="day",
             total_points=len(points),
             points=points,
+        )
+
+    def get_post_by_id(self, post_id: int) -> Optional[PostSummary]:
+        """Retrieves a single post by primary key ID with latest metrics."""
+        post = self.db.query(Post).filter(Post.id == post_id).first()
+        if not post:
+            return None
+
+        metric_sq = self._latest_metric_subquery()
+        latest_metric = (
+            self.db.query(metric_sq)
+            .filter(metric_sq.c.post_id == post.id)
+            .first()
+        )
+        metrics_schema = None
+        if latest_metric:
+            metrics_schema = PostMetricsSchema(
+                likes=latest_metric.likes or 0,
+                comments=latest_metric.comments or 0,
+                shares=latest_metric.shares or 0,
+                views=latest_metric.views or 0,
+            )
+
+        return PostSummary(
+            id=post.id,
+            platform=post.platform.name if post.platform else "Unknown",
+            external_post_id=post.external_post_id,
+            text=post.text,
+            author_username=post.user.username if post.user else None,
+            author_display_name=post.user.display_name if post.user else None,
+            posted_at=post.posted_at,
+            collected_at=post.collected_at,
+            url=post.url,
+            language=post.language,
+            metrics=metrics_schema,
+            metadata=post.post_metadata,
+        )
+
+    def get_platforms_list(self) -> List[PlatformResponse]:
+        """Returns registered canonical platforms."""
+        platforms = self.db.query(Platform).order_by(Platform.id.asc()).all()
+        return [PlatformResponse(id=p.id, name=p.name) for p in platforms]
+
+    def get_timeline(
+        self,
+        platform: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        granularity: str = "day",
+    ) -> TimelineResponse:
+        """
+        Aggregates post counts and per-platform breakdown into discrete time buckets (hour, day, week).
+        """
+        clean_granularity = (granularity or "day").strip().lower()
+        if clean_granularity not in {"hour", "day", "week"}:
+            raise ValueError(
+                f"Invalid granularity '{granularity}'. Supported values: 'hour', 'day', 'week'."
+            )
+
+        norm_start = self._normalize_datetime_for_db(start_time)
+        norm_end = self._normalize_datetime_for_db(end_time)
+
+        query = self._apply_filters(
+            self.db.query(Post),
+            platform=platform,
+            start_time=norm_start,
+            end_time=norm_end,
+        )
+        posts = query.all()
+
+        buckets_map: Dict[datetime, Dict[str, Any]] = {}
+        total_posts = 0
+
+        for p in posts:
+            dt = p.posted_at
+            if not dt:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+
+            if clean_granularity == "hour":
+                bucket_dt = dt.replace(minute=0, second=0, microsecond=0)
+            elif clean_granularity == "week":
+                from datetime import timedelta
+                monday = dt - timedelta(days=dt.weekday())
+                bucket_dt = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:  # day
+                bucket_dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            plat_name = p.platform.name if p.platform else "Unknown"
+
+            if bucket_dt not in buckets_map:
+                buckets_map[bucket_dt] = {
+                    "timestamp": bucket_dt,
+                    "count": 0,
+                    "platform_breakdown": {},
+                }
+
+            buckets_map[bucket_dt]["count"] += 1
+            plat_bd = buckets_map[bucket_dt]["platform_breakdown"]
+            plat_bd[plat_name] = plat_bd.get(plat_name, 0) + 1
+            total_posts += 1
+
+        sorted_buckets = [
+            TimelineBucket(
+                timestamp=b_data["timestamp"],
+                count=b_data["count"],
+                platform_breakdown=b_data["platform_breakdown"],
+            )
+            for b_dt, b_data in sorted(buckets_map.items(), key=lambda x: x[0])
+        ]
+
+        return TimelineResponse(
+            granularity=clean_granularity,
+            total_buckets=len(sorted_buckets),
+            total_posts=total_posts,
+            buckets=sorted_buckets,
         )

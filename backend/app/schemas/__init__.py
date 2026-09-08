@@ -31,6 +31,7 @@ from app.schemas.emotion import (
     EmotionResult,
 )
 from app.schemas.platform import PlatformResponse
+from app.schemas.timeline import TimelineBucket, TimelineResponse
 from app.schemas.post import (
     BatchIngestionResponse,
     IngestionResponse,

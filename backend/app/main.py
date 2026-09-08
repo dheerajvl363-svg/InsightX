@@ -9,6 +9,9 @@ from app.api.routes.analytics import router as analytics_router
 from app.api.routes.analytics_engine import router as analytics_engine_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingestion import router as ingestion_router
+from app.api.routes.platforms import router as platforms_router
+from app.api.routes.posts import router as posts_router
+from app.api.routes.timeline import router as timeline_router
 from app.config import APP_ENV, APP_VERSION, DEBUG
 from app.database import get_db
 
@@ -41,6 +44,11 @@ app = FastAPI(
 
 # --- Phase 5.1: versioned v1 API routers ---
 app.include_router(health_router, prefix="/api/v1")
+
+# --- Phase 5.4: Posts, Platforms & Timeline REST API routers ---
+app.include_router(posts_router, prefix="/api/v1/posts")
+app.include_router(platforms_router, prefix="/api/v1/platforms")
+app.include_router(timeline_router, prefix="/api/v1/timeline")
 
 # --- Phase 1–4: existing routers (unchanged) ---
 app.include_router(ingestion_router, prefix="/api/v1/ingestion")
