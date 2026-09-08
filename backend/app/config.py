@@ -36,3 +36,9 @@ def get_cors_origins(env: str = APP_ENV, raw_origins: str | None = None) -> list
 
 
 CORS_ORIGINS = get_cors_origins()
+
+# AI Assistant Configuration
+AI_PROVIDER = os.getenv("AI_PROVIDER", "mock")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "insightx-mock-ai-v1")
+AI_ENABLED = os.getenv("AI_ENABLED", "true").lower() in ("1", "true", "yes")
+AI_API_KEY = os.getenv("AI_API_KEY", None)

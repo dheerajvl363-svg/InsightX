@@ -13,6 +13,14 @@ from app.services.intelligence.workflow import (
     get_unified_workflow,
 )
 
+from app.services.intelligence.ai import (
+    AIAssistedIntelligenceService,
+    BaseAIProvider,
+    MockAIProvider,
+    get_ai_intelligence_service,
+    get_ai_provider,
+)
+
 __all__ = [
     "BaseIntelligenceEngine",
     "DeterministicIntelligenceEngine",
@@ -22,4 +30,9 @@ __all__ = [
     "get_explanation_engine",
     "UnifiedIntelligenceWorkflow",
     "get_unified_workflow",
+    "BaseAIProvider",
+    "MockAIProvider",
+    "get_ai_provider",
+    "AIAssistedIntelligenceService",
+    "get_ai_intelligence_service",
 ]

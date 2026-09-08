@@ -3,15 +3,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
-from app.api.routes.analytics import (
-    _fetch_db_posts_as_analytics_ready,
-    _resolve_analytics_posts,
-    get_dashboard_service,
-    get_network_service,
-    get_sentiment_service,
-    get_topic_service,
-    get_trend_service,
-)
+from app.services.analytics import AnalyticsService
+from app.services.data_quality import DataQualityService
 from app.database import get_db
 from app.schemas.data_quality import AnalyticsReadyPost
 from app.schemas.intelligence import (
@@ -42,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 
 class UnifiedIntelligenceWorkflow:
+
+
     """
     End-to-End Unified Intelligence Pipeline Orchestrator.
     Connects:
@@ -87,6 +82,11 @@ class UnifiedIntelligenceWorkflow:
         """
         Resolves posts from in-memory objects or database query into normalized AnalyticsReadyPost instances.
         """
+        from app.api.routes.analytics import (
+            _fetch_db_posts_as_analytics_ready,
+            _resolve_analytics_posts,
+        )
+
         if posts or raw_posts:
             return _resolve_analytics_posts(posts=posts, raw_posts=raw_posts)
 
@@ -102,6 +102,7 @@ class UnifiedIntelligenceWorkflow:
             )
 
         return []
+
 
     def run_workflow(
         self,

@@ -11,10 +11,11 @@ from app.schemas.intelligence import (
     IntelligenceAnalyzeRequest,
     UnifiedWorkflowResult,
 )
-from app.services.intelligence import (
+from app.services.intelligence.workflow import (
     UnifiedIntelligenceWorkflow,
     get_unified_workflow,
 )
+
 
 logger = logging.getLogger(__name__)
 
