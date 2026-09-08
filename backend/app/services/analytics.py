@@ -15,6 +15,8 @@ from app.schemas.analytics import (
     AuthorSummary,
     CountResponse,
     EngagementSummary,
+    EngagementTimeSeriesPoint,
+    EngagementTimeSeriesResponse,
     LanguageSummary,
     PlatformSummary,
     PostListResponse,
@@ -792,3 +794,99 @@ class AnalyticsService:
             )
 
         return TopicListResponse(total=total, limit=limit, offset=offset, items=items)
+
+    def get_engagement_time_series(
+        self,
+        platform: Optional[str] = None,
+        language: Optional[str] = None,
+        author: Optional[str] = None,
+        search: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> EngagementTimeSeriesResponse:
+        """
+        Aggregates daily post volume and engagement metrics (likes, comments, shares, views) chronologically.
+        """
+        effective_start = start_date if start_date is not None else start_time
+        effective_end = end_date if end_date is not None else end_time
+
+        norm_start = self._normalize_datetime_for_db(effective_start)
+        norm_end = self._normalize_datetime_for_db(effective_end)
+
+        # Base filtered posts subquery
+        filtered_posts = self._apply_filters(
+            self.db.query(Post),
+            platform=platform,
+            language=language,
+            author_username=author,
+            search=search,
+            start_time=norm_start,
+            end_time=norm_end,
+        ).subquery()
+
+        # Latest metric subquery per post
+        metric_sq = self._latest_metric_subquery()
+
+        # Group by date of posted_at
+        day_expr = func.date(filtered_posts.c.posted_at)
+
+        post_count_col = func.count(filtered_posts.c.id).label("post_count")
+        total_likes_col = func.coalesce(func.sum(metric_sq.c.likes), 0).label("total_likes")
+        total_comments_col = func.coalesce(func.sum(metric_sq.c.comments), 0).label("total_comments")
+        total_shares_col = func.coalesce(func.sum(metric_sq.c.shares), 0).label("total_shares")
+        total_views_col = func.coalesce(func.sum(metric_sq.c.views), 0).label("total_views")
+
+        query = (
+            self.db.query(
+                day_expr.label("day"),
+                post_count_col,
+                total_likes_col,
+                total_comments_col,
+                total_shares_col,
+                total_views_col,
+            )
+            .outerjoin(metric_sq, filtered_posts.c.id == metric_sq.c.post_id)
+            .group_by(day_expr)
+            .order_by(day_expr.asc())
+        )
+
+        rows = query.all()
+
+        points: List[EngagementTimeSeriesPoint] = []
+        for row in rows:
+            if not row.day:
+                continue
+            post_count = int(row.post_count) if row.post_count else 0
+            total_likes = int(row.total_likes) if row.total_likes else 0
+            total_comments = int(row.total_comments) if row.total_comments else 0
+            total_shares = int(row.total_shares) if row.total_shares else 0
+            total_views = int(row.total_views) if row.total_views else 0
+
+            divisor = float(post_count) if post_count > 0 else 1.0
+            avg_likes = round(total_likes / divisor, 2) if post_count > 0 else 0.0
+            avg_comments = round(total_comments / divisor, 2) if post_count > 0 else 0.0
+            avg_shares = round(total_shares / divisor, 2) if post_count > 0 else 0.0
+            avg_views = round(total_views / divisor, 2) if post_count > 0 else 0.0
+
+            points.append(
+                EngagementTimeSeriesPoint(
+                    date=str(row.day),
+                    post_count=post_count,
+                    total_likes=total_likes,
+                    total_comments=total_comments,
+                    total_shares=total_shares,
+                    total_views=total_views,
+                    avg_likes=avg_likes,
+                    avg_comments=avg_comments,
+                    avg_shares=avg_shares,
+                    avg_views=avg_views,
+                )
+            )
+
+        return EngagementTimeSeriesResponse(
+            interval="day",
+            total_points=len(points),
+            points=points,
+        )

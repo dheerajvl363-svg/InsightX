@@ -126,3 +126,24 @@ class TimeSeriesResponse(BaseModel):
     interval: str = Field(default="day", description="Grouping interval")
     total_points: int = Field(..., description="Number of data points")
     points: List[TimeSeriesPoint] = Field(default_factory=list, description="Chronological series points")
+
+
+class EngagementTimeSeriesPoint(BaseModel):
+    """Single point in an engagement time-series aggregation."""
+    date: str = Field(..., description="Date string in YYYY-MM-DD format")
+    post_count: int = Field(..., description="Number of posts published on this date")
+    total_likes: int = Field(default=0, description="Total likes across posts on this date")
+    total_comments: int = Field(default=0, description="Total comments across posts on this date")
+    total_shares: int = Field(default=0, description="Total shares across posts on this date")
+    total_views: int = Field(default=0, description="Total views across posts on this date")
+    avg_likes: float = Field(default=0.0, description="Average likes per post on this date")
+    avg_comments: float = Field(default=0.0, description="Average comments per post on this date")
+    avg_shares: float = Field(default=0.0, description="Average shares per post on this date")
+    avg_views: float = Field(default=0.0, description="Average views per post on this date")
+
+
+class EngagementTimeSeriesResponse(BaseModel):
+    """Response payload for daily engagement time-series analytics."""
+    interval: str = Field(default="day", description="Time series aggregation interval")
+    total_points: int = Field(..., description="Total time-series points returned")
+    points: List[EngagementTimeSeriesPoint] = Field(default_factory=list, description="Chronological time-series points")

@@ -10,6 +10,7 @@ from app.schemas.analytics import (
     AuthorListResponse,
     CountResponse,
     EngagementSummary,
+    EngagementTimeSeriesResponse,
     LanguageSummary,
     PlatformSummary,
     PostListResponse,
@@ -300,6 +301,40 @@ def get_timeseries(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while generating time-series analytics.",
+        )
+
+
+@router.get(
+    "/timeseries/engagement",
+    response_model=EngagementTimeSeriesResponse,
+    summary="Daily engagement time-series",
+    description="Returns daily post counts and aggregate engagement metrics (likes, comments, shares, views) grouped chronologically.",
+)
+def get_engagement_timeseries(
+    platform: Optional[str] = Query(None, description="Filter by platform name"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    author: Optional[str] = Query(None, description="Filter by author username"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    db: Session = Depends(get_db),
+) -> EngagementTimeSeriesResponse:
+    validate_date_range(start_date, end_date)
+    try:
+        service = AnalyticsService(db)
+        return service.get_engagement_time_series(
+            platform=platform,
+            language=language,
+            author=author,
+            search=search,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as e:
+        logger.error(f"Error generating engagement time-series: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while generating engagement time-series analytics.",
         )
 
 

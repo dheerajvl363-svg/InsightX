@@ -1316,6 +1316,175 @@ class TestAnalyticsService(unittest.TestCase):
             ["topic_analytics_sort_c", "topic_analytics_sort_a"],
         )
 
+    def test_engagement_timeseries_basic_aggregation(self):
+        u = User(platform_id=1, username="c86_ts_user_basic", display_name="TS Basic User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t1_a = datetime(2026, 1, 10, 10, 0, 0)
+        t1_b = datetime(2026, 1, 10, 15, 0, 0)
+        t2 = datetime(2026, 1, 11, 12, 0, 0)
+
+        p1 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c86_ts_p1",
+            text="Day 1 post with metric",
+            posted_at=t1_a,
+            collected_at=t1_a,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c86_ts_p2",
+            text="Day 1 post without metric",
+            posted_at=t1_b,
+            collected_at=t1_b,
+            language="en",
+        )
+        p3 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c86_ts_p3",
+            text="Day 2 post with metric",
+            posted_at=t2,
+            collected_at=t2,
+            language="en",
+        )
+        self.db.add_all([p1, p2, p3])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id, p3.id])
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1_a, likes=100, comments=20, shares=10, views=1000)
+        m3 = PostMetric(post_id=p3.id, collected_at=t2, likes=50, comments=5, shares=2, views=500)
+        self.db.add_all([m1, m3])
+        self.db.commit()
+
+        res = self.service.get_engagement_time_series()
+        self.assertEqual(res.interval, "day")
+
+        point_map = {p.date: p for p in res.points}
+        self.assertIn("2026-01-10", point_map)
+        self.assertIn("2026-01-11", point_map)
+
+        pt1 = point_map["2026-01-10"]
+        self.assertEqual(pt1.post_count, 2)
+        self.assertEqual(pt1.total_likes, 100)
+        self.assertEqual(pt1.total_comments, 20)
+        self.assertEqual(pt1.total_shares, 10)
+        self.assertEqual(pt1.total_views, 1000)
+        self.assertEqual(pt1.avg_likes, 50.0)
+        self.assertEqual(pt1.avg_comments, 10.0)
+        self.assertEqual(pt1.avg_shares, 5.0)
+        self.assertEqual(pt1.avg_views, 500.0)
+
+        pt2 = point_map["2026-01-11"]
+        self.assertEqual(pt2.post_count, 1)
+        self.assertEqual(pt2.total_likes, 50)
+        self.assertEqual(pt2.total_comments, 5)
+        self.assertEqual(pt2.total_shares, 2)
+        self.assertEqual(pt2.total_views, 500)
+        self.assertEqual(pt2.avg_likes, 50.0)
+
+        dates = [p.date for p in res.points]
+        self.assertEqual(dates, sorted(dates))
+
+    def test_engagement_timeseries_uses_latest_metric_snapshot(self):
+        u = User(platform_id=1, username="c86_ts_user_snap", display_name="TS Snap User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t = datetime(2026, 1, 15, 10, 0, 0)
+        p = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c86_ts_snap_p1",
+            text="Snapshot test post",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add(p)
+        self.db.commit()
+        self.temp_post_ids.append(p.id)
+
+        m_older = PostMetric(post_id=p.id, collected_at=datetime(2026, 1, 15, 10, 0, 0), likes=10, comments=2, shares=1, views=100)
+        m_newer = PostMetric(post_id=p.id, collected_at=datetime(2026, 1, 15, 12, 0, 0), likes=100, comments=20, shares=10, views=1000)
+        self.db.add_all([m_older, m_newer])
+        self.db.commit()
+
+        res = self.service.get_engagement_time_series()
+        point_map = {pt.date: pt for pt in res.points}
+        self.assertIn("2026-01-15", point_map)
+        pt = point_map["2026-01-15"]
+        self.assertEqual(pt.post_count, 1)
+        self.assertEqual(pt.total_likes, 100)
+        self.assertEqual(pt.total_comments, 20)
+        self.assertEqual(pt.total_shares, 10)
+        self.assertEqual(pt.total_views, 1000)
+        self.assertEqual(pt.avg_likes, 100.0)
+
+    def test_engagement_timeseries_filters(self):
+        u = User(platform_id=1, username="c86_ts_user_flt", display_name="TS Filter User")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t1 = datetime(2026, 1, 20, 10, 0, 0)
+        t2 = datetime(2026, 2, 20, 10, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c86_flt_p1",
+            text="python machine learning trend",
+            posted_at=t1,
+            collected_at=t1,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c86_flt_p2",
+            text="cricket match update",
+            posted_at=t2,
+            collected_at=t2,
+            language="te",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=100, comments=10, shares=5, views=1000)
+        m2 = PostMetric(post_id=p2.id, collected_at=t2, likes=50, comments=5, shares=2, views=500)
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        # language="en" filter
+        res_lang = self.service.get_engagement_time_series(language="en")
+        map_lang = {pt.date: pt for pt in res_lang.points}
+        self.assertIn("2026-01-20", map_lang)
+        self.assertNotIn("2026-02-20", map_lang)
+        self.assertEqual(map_lang["2026-01-20"].total_likes, 100)
+
+        # search="cricket" filter
+        res_srch = self.service.get_engagement_time_series(search="cricket")
+        map_srch = {pt.date: pt for pt in res_srch.points}
+        self.assertIn("2026-02-20", map_srch)
+        self.assertNotIn("2026-01-20", map_srch)
+        self.assertEqual(map_srch["2026-02-20"].total_likes, 50)
+
+        # date range filter
+        res_range = self.service.get_engagement_time_series(
+            start_date=datetime(2026, 1, 1),
+            end_date=datetime(2026, 1, 31, 23, 59, 59),
+        )
+        map_range = {pt.date: pt for pt in res_range.points}
+        self.assertIn("2026-01-20", map_range)
+        self.assertNotIn("2026-02-20", map_range)
+
 
 class TestAnalyticsAPI(unittest.TestCase):
     """
@@ -1887,6 +2056,36 @@ class TestAnalyticsAPI(unittest.TestCase):
 
         code_off, _ = call_api("GET", "/api/v1/analytics/topics?offset=-1")
         self.assertEqual(code_off, 422)
+
+    # --- Component 8.6: Engagement Time-Series Aggregation API tests ---
+
+    def test_50_get_engagement_timeseries_endpoint_basic(self):
+        code, data = call_api("GET", "/api/v1/analytics/timeseries/engagement")
+        self.assertEqual(code, 200)
+        self.assertEqual(data.get("interval"), "day")
+        self.assertIn("total_points", data)
+        self.assertIn("points", data)
+        if data["points"]:
+            first = data["points"][0]
+            self.assertIn("date", first)
+            self.assertIn("post_count", first)
+            self.assertIn("total_likes", first)
+            self.assertIn("total_comments", first)
+            self.assertIn("total_shares", first)
+            self.assertIn("total_views", first)
+            self.assertIn("avg_likes", first)
+
+    def test_51_get_engagement_timeseries_endpoint_filtering(self):
+        code, data = call_api("GET", "/api/v1/analytics/timeseries/engagement?language=en&search=infrastructure")
+        self.assertEqual(code, 200)
+        self.assertEqual(data.get("interval"), "day")
+        self.assertIn("total_points", data)
+        self.assertIn("points", data)
+
+    def test_52_get_engagement_timeseries_endpoint_invalid_date_range_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/timeseries/engagement?start_date=2026-12-01T00:00:00&end_date=2026-01-01T00:00:00")
+        self.assertEqual(code, 400)
+        self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
 
 
 if __name__ == "__main__":
