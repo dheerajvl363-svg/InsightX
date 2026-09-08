@@ -26,6 +26,10 @@ from app.schemas.analytics_api import (
     TopicAnalyzeRequest,
     TrendAnalyzeRequest,
 )
+from app.schemas.dashboard import (
+    DashboardOverviewResponse,
+    PlatformComparisonResponse,
+)
 from app.schemas.data_quality import AnalyticsReadyPost, BatchDataQualityResult
 from app.schemas.demographic import (
     BatchDemographicResult,
@@ -39,6 +43,7 @@ from app.schemas.sentiment import BatchSentimentResult, SentimentResult
 from app.schemas.topic import BatchTopicResult, ExtractedTopic
 from app.schemas.trend import BatchTrendResult, TopicTrendResult
 from app.services.analytics import AnalyticsService
+from app.services.dashboard import DashboardService
 from app.services.data_quality import DataQualityService, get_data_quality_service
 from app.services.demographic import (
     DemographicAnalysisService,
@@ -521,6 +526,10 @@ def get_quality_service() -> DataQualityService:
 
 def get_network_service() -> NetworkAnalysisService:
     return get_network_analyzer()
+
+
+def get_dashboard_service(db: Session = Depends(get_db)) -> DashboardService:
+    return DashboardService(db)
 
 
 def _fetch_db_posts_as_analytics_ready(
@@ -1084,5 +1093,75 @@ def analyze_network(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during network analysis.",
+        )
+
+
+# =====================================================================
+# Phase 5.5 — Dashboard & Combined Analytics Endpoints
+# =====================================================================
+
+@router.get(
+    "/overview",
+    response_model=DashboardOverviewResponse,
+    summary="High-Level Dashboard Overview",
+    description="Provides a consolidated dashboard snapshot synthesizing engagement metrics, platform summaries, sentiment analysis, topic clusters, trend momentum, and network influence.",
+)
+def get_dashboard_overview(
+    platform: Optional[str] = Query(None, description="Filter by platform name"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    limit: int = Query(100, ge=1, le=500, description="Max posts to evaluate for NLP/ML (1-500)"),
+    service: DashboardService = Depends(get_dashboard_service),
+) -> DashboardOverviewResponse:
+    validate_date_range(start_date, end_date)
+    try:
+        return service.get_overview(
+            platform=platform,
+            language=language,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            limit=limit,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error generating dashboard overview: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while generating dashboard overview.",
+        )
+
+
+@router.get(
+    "/platforms/compare",
+    response_model=PlatformComparisonResponse,
+    summary="Multi-Platform Comparative Analytics",
+    description="Provides cross-platform metrics comparison synthesizing post counts, aggregate engagement, and sentiment distribution.",
+)
+def get_platform_comparison(
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    service: DashboardService = Depends(get_dashboard_service),
+) -> PlatformComparisonResponse:
+    validate_date_range(start_date, end_date)
+    try:
+        return service.get_platform_comparison(
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error comparing platforms: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while computing platform comparison.",
         )
 
