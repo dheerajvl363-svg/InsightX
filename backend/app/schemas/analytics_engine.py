@@ -269,6 +269,95 @@ class DetailedEngagementReport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PostSentimentProfile(BaseModel):
+    """Individual post sentiment polarity and confidence scorecard."""
+    post_id: str = Field(..., description="Unique post identifier")
+    platform: str = Field(..., description="Publishing platform")
+    text_snippet: Optional[str] = Field(default=None, description="Truncated text excerpt for traceability")
+    label: str = Field(..., description="Sentiment classification: positive, neutral, or negative")
+    score: float = Field(..., ge=-1.0, le=1.0, description="Polarity score [-1.0, 1.0]")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Model inference confidence score [0.0, 1.0]")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Lexical cues and diagnostic details")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SentimentDistributionSummary(BaseModel):
+    """Aggregated statistical distribution summary of sentiment across posts."""
+    total_evaluated: int = Field(default=0, ge=0, description="Total posts evaluated")
+    positive_count: int = Field(default=0, ge=0, description="Count of positive posts")
+    neutral_count: int = Field(default=0, ge=0, description="Count of neutral posts")
+    negative_count: int = Field(default=0, ge=0, description="Count of negative posts")
+    positive_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of positive posts (%)")
+    neutral_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of neutral posts (%)")
+    negative_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of negative posts (%)")
+    average_polarity: float = Field(default=0.0, ge=-1.0, le=1.0, description="Mean polarity score [-1.0, 1.0]")
+    net_sentiment_score: float = Field(
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
+        description="Net sentiment score: (positive_count - negative_count) / max(total_evaluated, 1)"
+    )
+    dominant_sentiment: str = Field(default="neutral", description="Most frequent sentiment label")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlatformSentimentSummary(BaseModel):
+    """Platform-partitioned sentiment analytics profile."""
+    platform: str = Field(..., description="Platform identifier")
+    distribution: SentimentDistributionSummary = Field(..., description="Sentiment breakdown on platform")
+    dominant_sentiment: str = Field(default="neutral", description="Dominant sentiment on platform")
+    net_sentiment_score: float = Field(default=0.0, description="Net sentiment score on platform")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TemporalSentimentPoint(BaseModel):
+    """Temporal interval net sentiment tracker."""
+    interval_start: datetime = Field(..., description="Start timestamp of observation bucket (UTC)")
+    interval_end: datetime = Field(..., description="End timestamp of observation bucket (UTC)")
+    post_count: int = Field(default=0, ge=0, description="Posts in interval")
+    positive_count: int = Field(default=0, ge=0, description="Positive posts in interval")
+    neutral_count: int = Field(default=0, ge=0, description="Neutral posts in interval")
+    negative_count: int = Field(default=0, ge=0, description="Negative posts in interval")
+    average_polarity: float = Field(default=0.0, description="Average polarity in interval")
+    net_sentiment: float = Field(default=0.0, description="Net sentiment in interval")
+    dominant_sentiment: str = Field(default="neutral", description="Dominant sentiment in interval")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DetailedSentimentReport(BaseModel):
+    """Comprehensive Phase 4.3 sentiment analytics report."""
+    overall_distribution: SentimentDistributionSummary = Field(
+        ...,
+        description="Aggregate sentiment distribution"
+    )
+    platform_sentiment: Dict[str, PlatformSentimentSummary] = Field(
+        default_factory=dict,
+        description="Per-platform sentiment breakdowns"
+    )
+    temporal_sentiment: List[TemporalSentimentPoint] = Field(
+        default_factory=list,
+        description="Time-series sentiment evolution"
+    )
+    top_positive_posts: List[PostSentimentProfile] = Field(
+        default_factory=list,
+        description="Top representative positive posts"
+    )
+    top_negative_posts: List[PostSentimentProfile] = Field(
+        default_factory=list,
+        description="Top representative negative posts"
+    )
+    model_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Sentiment model information and diagnostic metadata"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Phase4AnalyticsReport(BaseModel):
     """Comprehensive high-level analytical intelligence report produced by Phase 4 Engine."""
     total_posts_evaluated: int = Field(..., ge=0, description="Number of posts evaluated")
@@ -294,6 +383,10 @@ class Phase4AnalyticsReport(BaseModel):
     detailed_engagement: Optional[DetailedEngagementReport] = Field(
         default=None,
         description="Extended Phase 4.2 multi-dimensional engagement analysis"
+    )
+    detailed_sentiment: Optional[DetailedSentimentReport] = Field(
+        default=None,
+        description="Extended Phase 4.3 multi-dimensional sentiment analysis"
     )
     summary_insights: List[str] = Field(
         default_factory=list,

@@ -4,11 +4,11 @@
 
 Phase 4 establishes the high-level **Analytics Engine** for **InsightX**, synthesizing raw ingestion (Phase 2) and NLP signals (Phase 3) into holistic, multi-dimensional public intelligence for **Smart India Hackathon 2026 Problem Statement 26152 (Social Media Analytics)**.
 
-While Phase 3 provides atomic NLP inferences (sentiment, emotion, topic clusters, demographics), Phase 4 introduces **dynamic synthesis across time, engagement depth, virality mechanics, and narrative lifecycles**.
+While Phase 3 provides atomic NLP inferences (sentiment, emotion, topic clusters, demographics), Phase 4 introduces **dynamic synthesis across time, engagement depth, virality mechanics, sentiment distributions, and narrative lifecycles**.
 
 ---
 
-## 2. Analytics Engine Architecture (Phase 4.1 & Phase 4.2)
+## 2. Analytics Engine Architecture (Phase 4.1 – 4.3)
 
 The Analytics Engine is structured into decoupled, modular components orchestrated by `AnalyticsEngineService`:
 
@@ -17,24 +17,24 @@ The Analytics Engine is structured into decoupled, modular components orchestrat
 │                        Phase 4 Analytics Engine                         │
 └────────────────────────────────────────────────────────────────────────┘
                                     │
-       ┌────────────────────────────┼────────────────────────────┐
-       ↓                            ↓                            ↓
-┌──────────────┐             ┌──────────────┐             ┌──────────────┐
-│  Engagement  │             │ Time-Series  │             │  Narrative   │
-│    Engine    │             │   Dynamics   │             │   Dynamics   │
-│ (Phase 4.2)  │             │ (Phase 4.1)  │             │ (Phase 4.1)  │
-└──────────────┘             └──────────────┘             └──────────────┘
-       │                            │                            │
-       │ • Weighted score           │ • Interval bucketing       │ • Lifecycle stages
-       │ • Virality & Amplification │ • k-period rolling avg     │ • Velocity & accel.
-       │ • Discussion depth         │ • Peak & anomaly z-score   │ • Sentiment drift
-       │ • Statistical distribution │ • Net sentiment track      │ • Topic trajectories
-       │ • Outlier post detection   └─────────────┬──────────────┘
-       │ • Platform benchmarking                  │
-       └────────────────────────────┬─────────────┘
-                                    ↓
-                 ┌──────────────────────────────────────┐
-                 │       AnalyticsEngineService         │
+       ┌────────────────────────────┼────────────────────────────┬────────────────────────────┐
+       ↓                            ↓                            ↓                            ↓
+┌──────────────┐             ┌──────────────┐             ┌──────────────┐             ┌──────────────┐
+│  Engagement  │             │ Time-Series  │             │  Sentiment   │             │  Narrative   │
+│    Engine    │             │   Dynamics   │             │    Engine    │             │   Dynamics   │
+│ (Phase 4.2)  │             │ (Phase 4.1)  │             │ (Phase 4.3)  │             │ (Phase 4.1)  │
+└──────────────┘             └──────────────┘             └──────────────┘             └──────────────┘
+       │                            │                            │                            │
+       │ • Weighted score           │ • Interval bucketing       │ • Per-post polarity        │ • Lifecycle stages
+       │ • Virality & Amplification │ • k-period rolling avg     │ • Net sentiment score      │ • Velocity & accel.
+       │ • Discussion depth         │ • Peak & anomaly z-score   │ • Distribution %           │ • Sentiment drift
+       │ • Statistical distribution │ • Net sentiment track      │ • Platform sentiment       │ • Topic trajectories
+       │ • Outlier post detection   └─────────────┬──────────────┴─────────────┬──────────────┘
+       │ • Platform benchmarking                  │                            │
+       └────────────────────────────┬─────────────┘                            │
+                                    ↓                                          │
+                 ┌──────────────────────────────────────┐                      │
+                 │       AnalyticsEngineService         │◄─────────────────────┘
                  │   (Orchestrator & Insights Engine)   │
                  └──────────────────┬───────────────────┘
                                     ↓
@@ -75,7 +75,25 @@ The Analytics Engine is structured into decoupled, modular components orchestrat
 
 ---
 
-### 3.2 Time-Series & Temporal Dynamics (Phase 4.1)
+### 3.2 Sentiment Analytics Formulation (Phase 4.3)
+
+- **Per-Post Polarity Score ($s_i$)**:
+  $$s_i \in [-1.0, 1.0]$$
+  Calculated via valence lexicon dictionary, emoji parsing, negation modifiers, and capitalization intensifiers.
+- **Sentiment Classification ($label_i$)**:
+  $$label_i = \begin{cases} \text{positive} & \text{if } s_i > +0.05 \\ \text{negative} & \text{if } s_i < -0.05 \\ \text{neutral} & \text{otherwise} \end{cases}$$
+- **Sentiment Percentages**:
+  $$\text{Positive \%} = \frac{N_{pos}}{N_{total}} \times 100, \quad \text{Neutral \%} = \frac{N_{neu}}{N_{total}} \times 100, \quad \text{Negative \%} = \frac{N_{neg}}{N_{total}} \times 100$$
+- **Net Sentiment Score ($\text{NSS}$)**:
+  $$\text{NSS} = \frac{N_{pos} - N_{neg}}{\max(N_{total}, 1)} \in [-1.0, 1.0]$$
+- **Platform Sentiment Partitioning**:
+  $$\text{NSS}_{platform} = \frac{N_{pos, p} - N_{neg, p}}{\max(N_{total, p}, 1)}$$
+- **Temporal Sentiment Trajectory**:
+  $$\text{NSS}_{bucket}(t) = \frac{N_{pos}(t) - N_{neg}(t)}{\max(N(t), 1)}, \quad \overline{s}(t) = \frac{1}{N(t)} \sum_{j \in bucket(t)} s_j$$
+
+---
+
+### 3.3 Time-Series & Temporal Dynamics (Phase 4.1)
 - **Interval Granularities**: `hour`, `day`, `week` (floored to UTC boundaries).
 - **Rolling Moving Average ($\text{RMA}_k$)**:
   $$\text{RMA}_k(i) = \frac{1}{\min(i+1, k)} \sum_{j=\max(0, i-k+1)}^{i} \text{metric}(j)$$
@@ -85,7 +103,7 @@ The Analytics Engine is structured into decoupled, modular components orchestrat
 
 ---
 
-### 3.3 Narrative Lifecycle State Machine (Phase 4.1)
+### 3.4 Narrative Lifecycle State Machine (Phase 4.1)
 Topics and discussion threads progress across deterministic lifecycle stages based on temporal volume velocity ($v = \text{vol}_{curr} - \text{vol}_{prev}$) and acceleration ($a = v - \text{vol}_{prev}$):
 
 | Lifecycle Stage | Condition | Description |
@@ -114,10 +132,11 @@ Topics and discussion threads progress across deterministic lifecycle stages bas
 - `PlatformEngagementComparison`: Cross-platform metrics, volume/engagement share %, and efficiency rank.
 - `PlatformComparativeReport`: Comparative platform summary report identifying volume, engagement, viral, and discussion leaders.
 - `DetailedEngagementReport`: Full multi-dimensional Phase 4.2 engagement scorecard.
-- `TimeSeriesBucket`: Discrete temporal bucket containing volume, engagement, rolling averages, sentiment/emotion aggregates, and anomaly score.
-- `TemporalDynamicsReport`: Full series of time buckets, peak interval indicators, and anomalous spike counts.
-- `NarrativeTrajectoryMetrics`: Velocity, acceleration, engagement velocity, and sentiment drift.
-- `NarrativeIntelligence`: Topic identification, representative keywords, post counts, lifecycle stage, trajectory metrics, and sample post IDs.
+- `PostSentimentProfile`: Per-post polarity score, label, confidence, text snippet, and lexical cue diagnostics.
+- `SentimentDistributionSummary`: High-level sentiment distribution with positive/neutral/negative counts, percentages, average polarity, and Net Sentiment Score.
+- `PlatformSentimentSummary`: Platform-partitioned sentiment profiles and net scores.
+- `TemporalSentimentPoint`: Time-bucketed net sentiment tracker.
+- `DetailedSentimentReport`: Comprehensive Phase 4.3 sentiment report with platform breakdowns, temporal trends, and extreme post extracts.
 - `Phase4AnalyticsReport`: Comprehensive unified analytical result combining all dimensions with actionable textual summary insights.
 
 ---
@@ -143,29 +162,46 @@ report = service.analyze(
 # Inspect high-level metrics
 print(f"Evaluated posts: {report.total_posts_evaluated}")
 print(f"Weighted Engagement: {report.engagement_analytics.weighted_engagement_score}")
-print(f"Virality Index: {report.engagement_analytics.virality_index}")
 
-# Inspect detailed Phase 4.2 engagement metrics
-if report.detailed_engagement:
-    dist = report.detailed_engagement.distribution
-    print(f"Engagement Mean: {dist.mean_engagement}, Median: {dist.median_engagement}, StdDev: {dist.std_dev_engagement}")
-    print(f"Top Engaged Platform: {report.detailed_engagement.platform_comparison.top_engaging_platform}")
-    print(f"High-virality posts: {report.detailed_engagement.virality.high_virality_posts_count}")
+# Inspect Phase 4.3 Sentiment Analytics
+if report.detailed_sentiment:
+    dist = report.detailed_sentiment.overall_distribution
+    print(f"Net Sentiment Score: {dist.net_sentiment_score:+.2f}")
+    print(f"Dominant Sentiment: {dist.dominant_sentiment}")
+    for plat, plat_sent in report.detailed_sentiment.platform_sentiment.items():
+        print(f"[{plat}] Net Sentiment: {plat_sent.net_sentiment_score:+.2f} ({plat_sent.dominant_sentiment})")
 ```
 
 ---
 
-## 6. Test Suite & Quality Verification
+## 6. Baseline Analyzer Capabilities & Known Limitations
 
-Phase 4 tests in `backend/tests/test_analytics_engine.py` cover:
+### Capabilities:
+- Fast, deterministic rule- and lexicon-based inference without external heavy dependencies.
+- Emoji sentiment mapping and negation handling (e.g., "not bad", "never good").
+- Capitalization intensifier booster (e.g., "EXCELLENT").
+- Safe handling of empty text, missing values, and mixed language snippets.
+
+### Known Limitations:
+- The baseline analyzer utilizes lexicon rules rather than a heavy transformer-based LLM/BERT model.
+- Complex sarcasm, deep domain irony, and context-dependent idiomatic expressions may default to neutral or base polarity.
+- The interface `BaseSentimentAnalyticsEngine` is designed for modularity to allow drop-in replacement with transformer/fine-tuned embedding models in future phases without architectural changes.
+
+---
+
+## 7. Test Suite & Quality Verification
+
+Phase 4 tests in `backend/tests/` cover:
 - Engagement calculations, virality indices, amplification rates, conversation depth, and zero-division safety.
 - Statistical distribution metrics (min, max, mean, median, standard deviation, quartiles Q1/Q3).
 - Individual post scorecards and standard deviation outlier detection ($k \cdot \sigma$).
 - Cross-platform comparative metrics, volume/engagement share %, and efficiency rankings.
+- Per-post sentiment scoring, positive/neutral/negative classifications, and empty/None text safety.
+- Sentiment distribution aggregation, platform partitioning, and temporal sentiment tracking.
 - Time-series interval flooring (hour/day/week), rolling averages, and anomaly z-score thresholding.
 - Narrative lifecycle transitions, trajectory modeling, and sentiment drift.
 - Full `AnalyticsEngineService` pipeline execution and summary insight generation.
 
 ### Verification Status:
-- **Phase 4 Unit Tests**: 23 / 23 passing.
-- **Repository Total**: 320 / 320 passing (0 failures, 0 errors).
+- **Phase 4 Unit Tests**: 34 / 34 passing.
+- **Repository Total**: 331 / 331 passing (0 failures, 0 errors).

@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.schemas.analytics_engine import (
+    DetailedEngagementReport,
+    DetailedSentimentReport,
     EngagementScoreBreakdown,
     IntervalUnit,
     NarrativeIntelligence,
@@ -12,6 +14,7 @@ from app.schemas.analytics_engine import (
 from app.services.analytics_engine.base import BaseAnalyticsEngine
 from app.services.analytics_engine.engagement import EngagementEngine
 from app.services.analytics_engine.narrative import NarrativeDynamicsEngine
+from app.services.analytics_engine.sentiment import SentimentAnalyticsEngine
 from app.services.analytics_engine.time_series import (
     TimeSeriesDynamicsEngine,
     extract_post_timestamp,
@@ -20,8 +23,8 @@ from app.services.analytics_engine.time_series import (
 
 class AnalyticsEngineService(BaseAnalyticsEngine):
     """
-    Unified multi-dimensional Analytics Engine Service for InsightX (Phase 4.1).
-    Synthesizes engagement analytics, temporal dynamics, narrative lifecycle modeling,
+    Unified multi-dimensional Analytics Engine Service for InsightX (Phase 4).
+    Synthesizes engagement analytics, temporal dynamics, sentiment analytics, narrative lifecycle modeling,
     and platform breakdown into actionable public intelligence.
     """
 
@@ -30,6 +33,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         engagement_engine: Optional[EngagementEngine] = None,
         time_series_engine: Optional[TimeSeriesDynamicsEngine] = None,
         narrative_engine: Optional[NarrativeDynamicsEngine] = None,
+        sentiment_engine: Optional[SentimentAnalyticsEngine] = None,
     ) -> None:
         self.engagement_engine = engagement_engine or EngagementEngine()
         self.time_series_engine = (
@@ -38,6 +42,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         self.narrative_engine = (
             narrative_engine or NarrativeDynamicsEngine(engagement_engine=self.engagement_engine)
         )
+        self.sentiment_engine = sentiment_engine or SentimentAnalyticsEngine()
 
     def _generate_summary_insights(
         self,
@@ -45,6 +50,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         temporal: TemporalDynamicsReport,
         narratives: List[NarrativeIntelligence],
         platforms: Dict[str, EngagementScoreBreakdown],
+        sentiment: Optional[DetailedSentimentReport] = None,
     ) -> List[str]:
         """Generate structured text insights summarizing key analytical findings."""
         insights: List[str] = []
@@ -69,6 +75,15 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         elif engagement.discussion_depth > 0.5:
             insights.append(
                 f"High community conversation depth observed (Discussion Depth: {engagement.discussion_depth:.2f})."
+            )
+
+        # Sentiment insight (Phase 4.3)
+        if sentiment:
+            dist = sentiment.overall_distribution
+            insights.append(
+                f"Overall sentiment is predominantly {dist.dominant_sentiment.upper()} "
+                f"({dist.positive_percentage:.1f}% positive, {dist.neutral_percentage:.1f}% neutral, "
+                f"{dist.negative_percentage:.1f}% negative, Net Sentiment Score: {dist.net_sentiment_score:+.2f})."
             )
 
         # Temporal peak insight
@@ -137,15 +152,17 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                 temporal_dynamics=empty_temporal,
                 narratives=[],
                 platform_breakdown={},
+                detailed_engagement=None,
+                detailed_sentiment=None,
                 summary_insights=["No posts provided for analysis."],
             )
 
-        # 1. Engagement Analytics
+        # 1. Engagement Analytics (Phase 4.1 & 4.2)
         engagement_breakdown = self.engagement_engine.calculate_engagement(posts)
         platform_breakdown = self.engagement_engine.calculate_platform_breakdown(posts)
         detailed_engagement = self.engagement_engine.generate_detailed_report(posts)
 
-        # 2. Time-Series Dynamics
+        # 2. Time-Series Dynamics (Phase 4.1)
         temporal_dynamics = self.time_series_engine.generate_time_series(
             posts=posts,
             interval_unit=interval_unit,
@@ -153,7 +170,13 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             anomaly_threshold_z=anomaly_threshold_z,
         )
 
-        # 3. Narrative Dynamics & Lifecycles
+        # 3. Sentiment Analytics (Phase 4.3)
+        detailed_sentiment = self.sentiment_engine.generate_detailed_report(
+            posts=posts,
+            interval_unit=interval_unit,
+        )
+
+        # 4. Narrative Dynamics & Lifecycles (Phase 4.1)
         narratives = self.narrative_engine.analyze_narratives(
             posts=posts,
             topics=topics,
@@ -170,12 +193,13 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         window_start = min(timestamps) if timestamps else None
         window_end = max(timestamps) if timestamps else None
 
-        # 4. Summary Insights
+        # 5. Summary Insights
         summary_insights = self._generate_summary_insights(
             engagement=engagement_breakdown,
             temporal=temporal_dynamics,
             narratives=narratives,
             platforms=platform_breakdown,
+            sentiment=detailed_sentiment,
         )
 
         return Phase4AnalyticsReport(
@@ -188,5 +212,6 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             narratives=narratives,
             platform_breakdown=platform_breakdown,
             detailed_engagement=detailed_engagement,
+            detailed_sentiment=detailed_sentiment,
             summary_insights=summary_insights,
         )

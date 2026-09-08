@@ -4,14 +4,19 @@ from datetime import datetime
 
 from app.schemas.analytics_engine import (
     DetailedEngagementReport,
+    DetailedSentimentReport,
     EngagementDistribution,
     EngagementScoreBreakdown,
     IntervalUnit,
     NarrativeIntelligence,
     Phase4AnalyticsReport,
     PlatformComparativeReport,
+    PlatformSentimentSummary,
     PostEngagementProfile,
+    PostSentimentProfile,
+    SentimentDistributionSummary,
     TemporalDynamicsReport,
+    TemporalSentimentPoint,
 )
 
 
@@ -80,6 +85,44 @@ class BaseNarrativeEngine(ABC):
         split_ratio: float = 0.5,
     ) -> List[NarrativeIntelligence]:
         """Analyze topic lifecycle stages, velocity, acceleration, and sentiment drift."""
+        pass
+
+
+class BaseSentimentAnalyticsEngine(ABC):
+    """Abstract interface for multi-dimensional sentiment analysis and aggregated dynamics."""
+
+    @abstractmethod
+    def analyze_post(self, post: Any) -> PostSentimentProfile:
+        """Analyze polarity and confidence for an individual post."""
+        pass
+
+    @abstractmethod
+    def analyze_batch(self, posts: List[Any]) -> List[PostSentimentProfile]:
+        """Analyze a collection of posts and produce itemized sentiment profiles."""
+        pass
+
+    @abstractmethod
+    def calculate_distribution(self, posts: List[Any]) -> SentimentDistributionSummary:
+        """Calculate aggregated sentiment counts, percentages, and net score."""
+        pass
+
+    @abstractmethod
+    def calculate_platform_sentiment(self, posts: List[Any]) -> Dict[str, PlatformSentimentSummary]:
+        """Calculate sentiment distribution partitioned by social media platform."""
+        pass
+
+    @abstractmethod
+    def calculate_temporal_sentiment(
+        self, posts: List[Any], interval_unit: IntervalUnit = IntervalUnit.HOUR
+    ) -> List[TemporalSentimentPoint]:
+        """Calculate temporal net sentiment evolution across continuous time intervals."""
+        pass
+
+    @abstractmethod
+    def generate_detailed_report(
+        self, posts: List[Any], top_limit: int = 5, interval_unit: IntervalUnit = IntervalUnit.HOUR
+    ) -> DetailedSentimentReport:
+        """Generate comprehensive Phase 4.3 sentiment analytics report."""
         pass
 
 
