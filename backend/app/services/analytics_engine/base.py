@@ -5,6 +5,7 @@ from datetime import datetime
 from app.schemas.analytics_engine import (
     DetailedEngagementReport,
     DetailedSentimentReport,
+    DetailedTrendReport,
     EngagementDistribution,
     EngagementScoreBreakdown,
     IntervalUnit,
@@ -12,11 +13,14 @@ from app.schemas.analytics_engine import (
     Phase4AnalyticsReport,
     PlatformComparativeReport,
     PlatformSentimentSummary,
+    PlatformTrendSummary,
     PostEngagementProfile,
     PostSentimentProfile,
     SentimentDistributionSummary,
     TemporalDynamicsReport,
     TemporalSentimentPoint,
+    TrendItemProfile,
+    TrendMomentumMetrics,
 )
 
 
@@ -123,6 +127,50 @@ class BaseSentimentAnalyticsEngine(ABC):
         self, posts: List[Any], top_limit: int = 5, interval_unit: IntervalUnit = IntervalUnit.HOUR
     ) -> DetailedSentimentReport:
         """Generate comprehensive Phase 4.3 sentiment analytics report."""
+        pass
+
+
+class BaseTrendAnalyticsEngine(ABC):
+    """Abstract interface for temporal trend detection, velocity, and momentum scoring."""
+
+    @abstractmethod
+    def calculate_trend_momentum(
+        self,
+        current_volume: int,
+        baseline_volume: int,
+        current_engagement: float = 0.0,
+        baseline_engagement: float = 0.0,
+        z_score: float = 0.0,
+    ) -> TrendMomentumMetrics:
+        """Calculate growth rate, velocity, acceleration, and momentum score."""
+        pass
+
+    @abstractmethod
+    def analyze_trends(
+        self,
+        posts: List[Any],
+        topics: Optional[List[Any]] = None,
+        reference_time: Optional[datetime] = None,
+    ) -> List[TrendItemProfile]:
+        """Identify and score trending topics, keywords, and hashtags."""
+        pass
+
+    @abstractmethod
+    def calculate_platform_trends(
+        self, posts: List[Any], top_limit: int = 5
+    ) -> Dict[str, PlatformTrendSummary]:
+        """Calculate trend rankings partitioned by platform."""
+        pass
+
+    @abstractmethod
+    def generate_detailed_report(
+        self,
+        posts: List[Any],
+        topics: Optional[List[Any]] = None,
+        top_limit: int = 10,
+        reference_time: Optional[datetime] = None,
+    ) -> DetailedTrendReport:
+        """Generate comprehensive Phase 4.4 Trend Analytics report."""
         pass
 
 

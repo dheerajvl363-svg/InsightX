@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from app.schemas.analytics_engine import (
     DetailedEngagementReport,
     DetailedSentimentReport,
+    DetailedTrendReport,
     EngagementScoreBreakdown,
     IntervalUnit,
     NarrativeIntelligence,
@@ -19,13 +20,15 @@ from app.services.analytics_engine.time_series import (
     TimeSeriesDynamicsEngine,
     extract_post_timestamp,
 )
+from app.services.analytics_engine.trend import TrendAnalyticsEngine
 
 
 class AnalyticsEngineService(BaseAnalyticsEngine):
     """
     Unified multi-dimensional Analytics Engine Service for InsightX (Phase 4).
-    Synthesizes engagement analytics, temporal dynamics, sentiment analytics, narrative lifecycle modeling,
-    and platform breakdown into actionable public intelligence.
+    Synthesizes engagement analytics, temporal dynamics, sentiment analytics,
+    trend momentum detection, narrative lifecycle modeling, and platform breakdown
+    into actionable public intelligence.
     """
 
     def __init__(
@@ -34,6 +37,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         time_series_engine: Optional[TimeSeriesDynamicsEngine] = None,
         narrative_engine: Optional[NarrativeDynamicsEngine] = None,
         sentiment_engine: Optional[SentimentAnalyticsEngine] = None,
+        trend_engine: Optional[TrendAnalyticsEngine] = None,
     ) -> None:
         self.engagement_engine = engagement_engine or EngagementEngine()
         self.time_series_engine = (
@@ -43,6 +47,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             narrative_engine or NarrativeDynamicsEngine(engagement_engine=self.engagement_engine)
         )
         self.sentiment_engine = sentiment_engine or SentimentAnalyticsEngine()
+        self.trend_engine = trend_engine or TrendAnalyticsEngine(engagement_engine=self.engagement_engine)
 
     def _generate_summary_insights(
         self,
@@ -51,6 +56,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         narratives: List[NarrativeIntelligence],
         platforms: Dict[str, EngagementScoreBreakdown],
         sentiment: Optional[DetailedSentimentReport] = None,
+        trends: Optional[DetailedTrendReport] = None,
     ) -> List[str]:
         """Generate structured text insights summarizing key analytical findings."""
         insights: List[str] = []
@@ -85,6 +91,20 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                 f"({dist.positive_percentage:.1f}% positive, {dist.neutral_percentage:.1f}% neutral, "
                 f"{dist.negative_percentage:.1f}% negative, Net Sentiment Score: {dist.net_sentiment_score:+.2f})."
             )
+
+        # Trend momentum insight (Phase 4.4)
+        if trends and trends.ranked_trends:
+            top_trend = trends.ranked_trends[0]
+            insights.append(
+                f"Leading momentum trend is '{top_trend.name}' ({top_trend.momentum.direction.upper()}, "
+                f"Momentum Score: {top_trend.momentum.momentum_score:.1f}, "
+                f"Growth: {top_trend.momentum.growth_rate_pct:+.1f}%)."
+            )
+            if trends.spiking_count > 0:
+                insights.append(
+                    f"Detected {trends.spiking_count} anomalous trending spike(s): "
+                    + ", ".join(f"'{t.name}'" for t in trends.top_spiking_trends[:3])
+                )
 
         # Temporal peak insight
         if temporal.peak_bucket_start is not None and temporal.peak_bucket_volume > 0:
@@ -154,6 +174,7 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                 platform_breakdown={},
                 detailed_engagement=None,
                 detailed_sentiment=None,
+                detailed_trends=None,
                 summary_insights=["No posts provided for analysis."],
             )
 
@@ -176,7 +197,14 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             interval_unit=interval_unit,
         )
 
-        # 4. Narrative Dynamics & Lifecycles (Phase 4.1)
+        # 4. Trend Analytics (Phase 4.4)
+        detailed_trends = self.trend_engine.generate_detailed_report(
+            posts=posts,
+            topics=topics,
+            reference_time=reference_time,
+        )
+
+        # 5. Narrative Dynamics & Lifecycles (Phase 4.1)
         narratives = self.narrative_engine.analyze_narratives(
             posts=posts,
             topics=topics,
@@ -193,13 +221,14 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         window_start = min(timestamps) if timestamps else None
         window_end = max(timestamps) if timestamps else None
 
-        # 5. Summary Insights
+        # 6. Summary Insights
         summary_insights = self._generate_summary_insights(
             engagement=engagement_breakdown,
             temporal=temporal_dynamics,
             narratives=narratives,
             platforms=platform_breakdown,
             sentiment=detailed_sentiment,
+            trends=detailed_trends,
         )
 
         return Phase4AnalyticsReport(
@@ -213,5 +242,6 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
             platform_breakdown=platform_breakdown,
             detailed_engagement=detailed_engagement,
             detailed_sentiment=detailed_sentiment,
+            detailed_trends=detailed_trends,
             summary_insights=summary_insights,
         )

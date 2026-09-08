@@ -358,6 +358,82 @@ class DetailedSentimentReport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TrendMomentumMetrics(BaseModel):
+    """Statistical metrics distinguishing momentum from raw volume."""
+    current_volume: int = Field(default=0, ge=0, description="Volume in observation window")
+    baseline_volume: int = Field(default=0, ge=0, description="Volume in reference baseline window")
+    growth_rate_pct: float = Field(default=0.0, description="Growth rate percentage relative to baseline")
+    velocity: float = Field(default=0.0, description="Net post volume change per observation window")
+    acceleration: float = Field(default=0.0, description="Rate of velocity change")
+    momentum_score: float = Field(
+        default=0.0,
+        description="Composite trend momentum score (velocity * growth_multiplier * engagement_factor)"
+    )
+    z_score: float = Field(default=0.0, description="Statistical volume spike z-score")
+    direction: str = Field(
+        default="stable",
+        description="Trend classification: emerging, accelerating, spiking, stable, or declining"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TrendItemProfile(BaseModel):
+    """Profile of an individual trending entity (hashtag, keyword, or topic)."""
+    trend_id: str = Field(..., description="Unique trend identifier")
+    name: str = Field(..., description="Display label, hashtag, or keyword")
+    item_type: str = Field(default="topic", description="Entity type: hashtag, keyword, or topic")
+    post_count: int = Field(default=0, ge=0, description="Total matching post occurrences")
+    momentum: TrendMomentumMetrics = Field(
+        default_factory=TrendMomentumMetrics,
+        description="Momentum, velocity, and spike metrics"
+    )
+    sample_post_ids: List[str] = Field(default_factory=list, description="Sample post identifiers")
+    is_emerging: bool = Field(default=False, description="Flag indicating newly surging topic with zero prior baseline")
+    is_spiking: bool = Field(default=False, description="Flag indicating anomalous volume spike (z >= 2.0)")
+    platforms: List[str] = Field(default_factory=list, description="Platforms where this trend is actively observed")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlatformTrendSummary(BaseModel):
+    """Platform-specific trend summary report."""
+    platform: str = Field(..., description="Platform identifier")
+    top_trends: List[TrendItemProfile] = Field(default_factory=list, description="Top trending items on platform")
+    spiking_trends_count: int = Field(default=0, ge=0, description="Count of spiking trends on platform")
+    emerging_trends_count: int = Field(default=0, ge=0, description="Count of emerging trends on platform")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DetailedTrendReport(BaseModel):
+    """Comprehensive Phase 4.4 Trend Analytics report."""
+    total_trends_evaluated: int = Field(default=0, ge=0, description="Total unique trends analyzed")
+    emerging_count: int = Field(default=0, ge=0, description="Count of emerging trends")
+    accelerating_count: int = Field(default=0, ge=0, description="Count of accelerating trends")
+    spiking_count: int = Field(default=0, ge=0, description="Count of spiking trends")
+    stable_count: int = Field(default=0, ge=0, description="Count of stable topics")
+    declining_count: int = Field(default=0, ge=0, description="Count of declining topics")
+    ranked_trends: List[TrendItemProfile] = Field(
+        default_factory=list,
+        description="Ranked list of all detected trends sorted by momentum score descending"
+    )
+    platform_trends: Dict[str, PlatformTrendSummary] = Field(
+        default_factory=dict,
+        description="Platform-partitioned trend distributions"
+    )
+    top_spiking_trends: List[TrendItemProfile] = Field(
+        default_factory=list,
+        description="Top anomalous volume spikes"
+    )
+    top_emerging_trends: List[TrendItemProfile] = Field(
+        default_factory=list,
+        description="Top newly emerging trends"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Phase4AnalyticsReport(BaseModel):
     """Comprehensive high-level analytical intelligence report produced by Phase 4 Engine."""
     total_posts_evaluated: int = Field(..., ge=0, description="Number of posts evaluated")
@@ -387,6 +463,10 @@ class Phase4AnalyticsReport(BaseModel):
     detailed_sentiment: Optional[DetailedSentimentReport] = Field(
         default=None,
         description="Extended Phase 4.3 multi-dimensional sentiment analysis"
+    )
+    detailed_trends: Optional[DetailedTrendReport] = Field(
+        default=None,
+        description="Extended Phase 4.4 multi-dimensional trend momentum analysis"
     )
     summary_insights: List[str] = Field(
         default_factory=list,

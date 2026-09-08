@@ -4,6 +4,7 @@ from app.services.analytics_engine.base import (
     BaseNarrativeEngine,
     BaseSentimentAnalyticsEngine,
     BaseTimeSeriesEngine,
+    BaseTrendAnalyticsEngine,
 )
 from app.services.analytics_engine.engagement import (
     EngagementEngine,
@@ -27,6 +28,10 @@ from app.services.analytics_engine.time_series import (
     interval_timedelta,
     parse_timestamp_to_utc,
 )
+from app.services.analytics_engine.trend import (
+    TrendAnalyticsEngine,
+    extract_hashtags_and_keywords,
+)
 
 __all__ = [
     "BaseAnalyticsEngine",
@@ -34,6 +39,7 @@ __all__ = [
     "BaseNarrativeEngine",
     "BaseSentimentAnalyticsEngine",
     "BaseTimeSeriesEngine",
+    "BaseTrendAnalyticsEngine",
     "EngagementEngine",
     "extract_post_metrics",
     "NarrativeDynamicsEngine",
@@ -47,5 +53,7 @@ __all__ = [
     "floor_to_interval",
     "interval_timedelta",
     "parse_timestamp_to_utc",
+    "TrendAnalyticsEngine",
+    "extract_hashtags_and_keywords",
     "AnalyticsEngineService",
 ]
