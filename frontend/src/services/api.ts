@@ -11,7 +11,7 @@ import type {
   ErrorResponse,
   HealthResponse,
   PlatformComparisonResponse,
-  PlatformListResponse,
+  PlatformInfo,
   PostListResponse,
   PostQueryParams,
   PostSummary,
@@ -120,8 +120,8 @@ export const apiService = {
   },
 
   // Platforms (GET /api/v1/platforms)
-  async getPlatforms(): Promise<PlatformListResponse> {
-    return request<PlatformListResponse>('/platforms');
+  async getPlatforms(): Promise<PlatformInfo[]> {
+    return request<PlatformInfo[]>('/platforms');
   },
 
   // Timeline (GET /api/v1/timeline)
@@ -129,7 +129,7 @@ export const apiService = {
     granularity: 'hour' | 'day' | 'week' = 'day',
     platform?: string
   ): Promise<TimelineResponse> {
-    const params: Record<string, unknown> = { interval: granularity };
+    const params: Record<string, unknown> = { granularity };
     if (platform) params.platform = platform;
     return request<TimelineResponse>(`/timeline${buildQueryString(params)}`);
   },
