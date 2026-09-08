@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import List, Optional
 
@@ -17,11 +17,54 @@ from app.schemas.analytics import (
     TimeSeriesResponse,
     TopicListResponse,
 )
+from app.schemas.analytics_api import (
+    CombinedAnalyticsResponse,
+    CombinedAnalyzeRequest,
+    DemographicAnalyzeRequest,
+    EmotionAnalyzeRequest,
+    SentimentAnalyzeRequest,
+    TopicAnalyzeRequest,
+    TrendAnalyzeRequest,
+)
+from app.schemas.data_quality import AnalyticsReadyPost, BatchDataQualityResult
+from app.schemas.demographic import (
+    BatchDemographicResult,
+    DemographicDistribution,
+    DemographicProfile,
+)
+from app.schemas.emotion import BatchEmotionResult, EmotionResult
+from app.schemas.post import RawPostPayload
+from app.schemas.sentiment import BatchSentimentResult, SentimentResult
+from app.schemas.topic import BatchTopicResult, ExtractedTopic
+from app.schemas.trend import BatchTrendResult, TopicTrendResult
 from app.services.analytics import AnalyticsService
+from app.services.data_quality import DataQualityService, get_data_quality_service
+from app.services.demographic import (
+    DemographicAnalysisService,
+    get_demographic_analyzer,
+)
+from app.services.emotion import (
+    EmotionAnalysisService,
+    get_emotion_analyzer,
+)
+from app.services.normalizer import DataNormalizer
+from app.services.sentiment import (
+    SentimentAnalysisService,
+    get_sentiment_analyzer,
+)
+from app.services.topic import (
+    TopicAnalysisService,
+    get_topic_analyzer,
+)
+from app.services.trend import (
+    TrendAnalysisService,
+    get_trend_analyzer,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Analytics"])
+
 
 
 ALLOWED_SORT_BY = {"posted_at", "likes", "comments", "shares", "views"}
@@ -440,4 +483,361 @@ def get_topics(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while retrieving topic summary.",
+        )
+
+
+# =====================================================================
+# Phase 3 Analytics Dependency Inversion Providers
+# =====================================================================
+
+def get_sentiment_service() -> SentimentAnalysisService:
+    return get_sentiment_analyzer()
+
+
+def get_emotion_service() -> EmotionAnalysisService:
+    return get_emotion_analyzer()
+
+
+def get_topic_service() -> TopicAnalysisService:
+    return get_topic_analyzer()
+
+
+def get_trend_service() -> TrendAnalysisService:
+    return get_trend_analyzer()
+
+
+def get_demographic_service() -> DemographicAnalysisService:
+    return get_demographic_analyzer()
+
+
+def get_quality_service() -> DataQualityService:
+    return get_data_quality_service()
+
+
+def _resolve_analytics_posts(
+    posts: Optional[List[AnalyticsReadyPost]] = None,
+    raw_posts: Optional[List[RawPostPayload]] = None,
+    text: Optional[str] = None,
+    quality_service: Optional[DataQualityService] = None,
+) -> List[AnalyticsReadyPost]:
+    """
+    Standardizes request input into a list of quality-validated AnalyticsReadyPost instances.
+    """
+    quality_svc = quality_service or get_data_quality_service()
+
+    if posts is not None:
+        for p in posts:
+            if not isinstance(p, AnalyticsReadyPost):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Invalid post format: expected AnalyticsReadyPost",
+                )
+        return posts
+
+    if raw_posts is not None:
+        normalized = [DataNormalizer.normalize(p) for p in raw_posts]
+        batch_result = quality_svc.validate_batch(normalized)
+        if batch_result.valid_count == 0 and len(raw_posts) > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All submitted raw posts failed data quality validation.",
+            )
+        return batch_result.valid_posts
+
+    if text is not None and text.strip():
+        raw = RawPostPayload(
+            platform="api",
+            external_id="api_post_1",
+            text=text.strip(),
+            posted_at=datetime.now(timezone.utc),
+        )
+        norm = DataNormalizer.normalize(raw)
+        res = quality_svc.validate_and_prepare(norm)
+        if res.is_valid and res.post:
+            return [res.post]
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Text failed data quality validation: {', '.join(res.errors)}",
+            )
+
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="No post content provided for analysis. Please provide 'posts', 'raw_posts', or 'text'.",
+    )
+
+
+# =====================================================================
+# Phase 3 Analytics API Endpoints
+# =====================================================================
+
+@router.post(
+    "/sentiment",
+    response_model=BatchSentimentResult,
+    summary="Sentiment Analysis",
+    description="Analyzes the polarity and sentiment class of social media posts.",
+)
+def analyze_sentiment(
+    payload: SentimentAnalyzeRequest,
+    service: SentimentAnalysisService = Depends(get_sentiment_service),
+    quality_service: DataQualityService = Depends(get_quality_service),
+) -> BatchSentimentResult:
+    try:
+        posts = _resolve_analytics_posts(
+            posts=payload.posts,
+            raw_posts=payload.raw_posts,
+            text=payload.text,
+            quality_service=quality_service,
+        )
+        return service.analyze_batch(posts)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during sentiment analysis: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during sentiment analysis.",
+        )
+
+
+@router.post(
+    "/emotion",
+    response_model=BatchEmotionResult,
+    summary="Emotion Analysis",
+    description="Detects primary emotional expressions across 7 discrete emotional states.",
+)
+def analyze_emotion(
+    payload: EmotionAnalyzeRequest,
+    service: EmotionAnalysisService = Depends(get_emotion_service),
+    quality_service: DataQualityService = Depends(get_quality_service),
+) -> BatchEmotionResult:
+    try:
+        posts = _resolve_analytics_posts(
+            posts=payload.posts,
+            raw_posts=payload.raw_posts,
+            text=payload.text,
+            quality_service=quality_service,
+        )
+        return service.analyze_batch(posts)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during emotion analysis: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during emotion analysis.",
+        )
+
+
+@router.post(
+    "/topics",
+    response_model=BatchTopicResult,
+    summary="Topic Extraction & Narrative Detection",
+    description="Extracts representative keywords, multi-word phrases, and clusters posts into coherent topic groups.",
+)
+def extract_topics(
+    payload: TopicAnalyzeRequest,
+    service: TopicAnalysisService = Depends(get_topic_service),
+    quality_service: DataQualityService = Depends(get_quality_service),
+) -> BatchTopicResult:
+    try:
+        posts = _resolve_analytics_posts(
+            posts=payload.posts,
+            raw_posts=payload.raw_posts,
+            quality_service=quality_service,
+        )
+        return service.extract_topics(posts)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during topic extraction: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during topic extraction.",
+        )
+
+
+@router.post(
+    "/trends",
+    response_model=BatchTrendResult,
+    summary="Trend Detection & Emerging Narrative Analysis",
+    description="Evaluates temporal velocity, volume growth rates, statistical spikes, and emerging narratives.",
+)
+def analyze_trends(
+    payload: TrendAnalyzeRequest,
+    trend_service: TrendAnalysisService = Depends(get_trend_service),
+    topic_service: TopicAnalysisService = Depends(get_topic_service),
+    quality_service: DataQualityService = Depends(get_quality_service),
+) -> BatchTrendResult:
+    try:
+        posts = _resolve_analytics_posts(
+            posts=payload.posts,
+            raw_posts=payload.raw_posts,
+            quality_service=quality_service,
+        )
+
+        topics = payload.topics
+        if not topics:
+            topic_result = topic_service.extract_topics(posts)
+            topics = topic_result.topics
+
+        duration = timedelta(seconds=payload.window_duration_seconds or 3600)
+
+        return trend_service.analyze_trends(
+            topics=topics,
+            posts=posts,
+            reference_time=payload.reference_time,
+            window_duration=duration,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during trend analysis: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during trend analysis.",
+        )
+
+
+@router.post(
+    "/demographics",
+    response_model=BatchDemographicResult,
+    summary="Demographic Intelligence",
+    description="Aggregates demographic distributions across age groups, gender categories, and geographic locations.",
+)
+def analyze_demographics(
+    payload: DemographicAnalyzeRequest,
+    service: DemographicAnalysisService = Depends(get_demographic_service),
+    quality_service: DataQualityService = Depends(get_quality_service),
+) -> BatchDemographicResult:
+    try:
+        if payload.profiles is not None:
+            return service.analyze_batch(
+                data=payload.profiles,
+                topics=payload.topics,
+                sentiment_results=payload.sentiment_results,
+                trend_results=payload.trend_results,
+            )
+
+        posts = _resolve_analytics_posts(
+            posts=payload.posts,
+            raw_posts=payload.raw_posts,
+            quality_service=quality_service,
+        )
+        return service.analyze_batch(
+            data=posts,
+            topics=payload.topics,
+            sentiment_results=payload.sentiment_results,
+            trend_results=payload.trend_results,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during demographic analysis: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during demographic analysis.",
+        )
+
+
+@router.post(
+    "/analyze",
+    response_model=CombinedAnalyticsResponse,
+    summary="Unified Multi-Layer Analytics Pipeline",
+    description="Orchestrates data quality, sentiment, emotion, topics, trends, and demographics in a single request.",
+)
+def analyze_all(
+    payload: CombinedAnalyzeRequest,
+    quality_service: DataQualityService = Depends(get_quality_service),
+    sentiment_service: SentimentAnalysisService = Depends(get_sentiment_service),
+    emotion_service: EmotionAnalysisService = Depends(get_emotion_service),
+    topic_service: TopicAnalysisService = Depends(get_topic_service),
+    trend_service: TrendAnalysisService = Depends(get_trend_service),
+    demographic_service: DemographicAnalysisService = Depends(get_demographic_service),
+) -> CombinedAnalyticsResponse:
+    try:
+        quality_batch: Optional[BatchDataQualityResult] = None
+        ready_posts: List[AnalyticsReadyPost] = []
+
+        if payload.posts is not None:
+            ready_posts = payload.posts
+            total_eval = len(ready_posts)
+        elif payload.raw_posts is not None:
+            total_eval = len(payload.raw_posts)
+            normalized = [DataNormalizer.normalize(p) for p in payload.raw_posts]
+            quality_batch = quality_service.validate_batch(normalized)
+            ready_posts = quality_batch.valid_posts
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No post content provided for analysis. Please provide 'posts' or 'raw_posts'.",
+            )
+
+        # 1. Sentiment
+        sentiment_res: Optional[BatchSentimentResult] = None
+        if payload.include_sentiment and ready_posts:
+            sentiment_res = sentiment_service.analyze_batch(ready_posts)
+
+        # 2. Emotion
+        emotion_res: Optional[BatchEmotionResult] = None
+        if payload.include_emotion and ready_posts:
+            emotion_res = emotion_service.analyze_batch(ready_posts)
+
+        # 3. Topics
+        topic_res: Optional[BatchTopicResult] = None
+        if payload.include_topics and ready_posts:
+            topic_res = topic_service.extract_topics(ready_posts)
+
+        # 4. Trends
+        trend_res: Optional[BatchTrendResult] = None
+        if payload.include_trends and ready_posts and topic_res and topic_res.topics:
+            duration = timedelta(seconds=payload.window_duration_seconds or 3600)
+            trend_res = trend_service.analyze_trends(
+                topics=topic_res,
+                posts=ready_posts,
+                reference_time=payload.reference_time,
+                window_duration=duration,
+            )
+
+        # 5. Demographics
+        demo_res: Optional[BatchDemographicResult] = None
+        if payload.include_demographics and ready_posts:
+            demo_res = demographic_service.analyze_batch(
+                data=ready_posts,
+                topics=topic_res.topics if topic_res else None,
+                sentiment_results=sentiment_res.results if sentiment_res else None,
+                trend_results=trend_res.trends if trend_res else None,
+            )
+
+        return CombinedAnalyticsResponse(
+            total_posts_evaluated=total_eval,
+            valid_posts_count=len(ready_posts),
+            data_quality=quality_batch,
+            sentiment=sentiment_res,
+            emotion=emotion_res,
+            topics=topic_res,
+            trends=trend_res,
+            demographics=demo_res,
+            analyzed_at=datetime.now(timezone.utc),
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during unified analytics execution: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during unified analytics pipeline execution.",
         )

@@ -34,6 +34,15 @@ from app.schemas.sentiment import (
     SentimentProbabilities,
     SentimentResult,
 )
+from app.schemas.analytics_api import (
+    CombinedAnalyticsResponse,
+    CombinedAnalyzeRequest,
+    DemographicAnalyzeRequest,
+    EmotionAnalyzeRequest,
+    SentimentAnalyzeRequest,
+    TopicAnalyzeRequest,
+    TrendAnalyzeRequest,
+)
 from app.schemas.demographic import (
     AgeGroup,
     BatchDemographicResult,
@@ -102,4 +111,11 @@ __all__ = [
     "SentimentDemographicResult",
     "TrendDemographicResult",
     "BatchDemographicResult",
+    "SentimentAnalyzeRequest",
+    "EmotionAnalyzeRequest",
+    "TopicAnalyzeRequest",
+    "TrendAnalyzeRequest",
+    "DemographicAnalyzeRequest",
+    "CombinedAnalyzeRequest",
+    "CombinedAnalyticsResponse",
 ]

@@ -400,3 +400,12 @@ class DataQualityService:
             valid_posts=valid_posts,
             rejected_records=rejected_records,
         )
+
+
+# Global singleton factory
+_default_data_quality_service = DataQualityService()
+
+
+def get_data_quality_service() -> DataQualityService:
+    """Provides the singleton instance of DataQualityService."""
+    return _default_data_quality_service
