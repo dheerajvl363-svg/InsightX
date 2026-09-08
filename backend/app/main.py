@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,7 @@ from app.api.routes.ingestion import router as ingestion_router
 from app.api.routes.platforms import router as platforms_router
 from app.api.routes.posts import router as posts_router
 from app.api.routes.timeline import router as timeline_router
-from app.config import APP_ENV, APP_VERSION, DEBUG
+from app.config import APP_ENV, APP_VERSION, CORS_ORIGINS, DEBUG
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,15 @@ app = FastAPI(
     debug=DEBUG,
     lifespan=lifespan,
     openapi_tags=tags_metadata,
+)
+
+# --- Phase 5.9: Configurable CORS middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Phase 5.6: Global exception handlers ---

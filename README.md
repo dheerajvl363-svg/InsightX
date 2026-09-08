@@ -2,11 +2,11 @@
 
 Smart India Hackathon 2026 — Problem Statement 26152: **Social Media Analytics**
 
-InsightX is an intelligent social media intelligence platform that turns real-time and batch public social-media streams into actionable public insights. It provides an automated analytics pipeline capable of multi-platform data normalization, quality sanitization, sentiment analysis, emotion recognition, topic clustering, narrative velocity/trend tracking, and privacy-preserving demographic intelligence.
+InsightX is an intelligent social media analytics and intelligence platform that turns real-time and batch public social-media streams into actionable public intelligence. It provides an automated analytics pipeline capable of multi-platform data normalization, quality sanitization, sentiment analysis, emotion recognition, topic clustering, narrative velocity/trend tracking, co-occurrence network graphs, privacy-preserving demographic intelligence, and a high-performance REST API.
 
 ---
 
-## Current Status: Phase 4 Complete (Release Ready)
+## Current Status: Phase 5 Complete (Backend Release Ready)
 
 - **Phase 1 (Backend & Database Foundation)**: FastAPI, PostgreSQL, SQLAlchemy ORM models, health monitoring.
 - **Phase 2 (Data Ingestion & Normalization)**: Platform adapters (X, Reddit, Telegram, YouTube), `DataNormalizer`, PostgreSQL storage, engagement metrics tracking.
@@ -28,51 +28,57 @@ InsightX is an intelligent social media intelligence platform that turns real-ti
   - **4.7 Analytics Engine REST API**: Modular API router mounted at `/api/v1/analytics/engine/*` with specialized and unified endpoints.
   - **4.8 Integration & Hardening**: End-to-end multi-platform integration, cross-component consistency, edge-case resilience, determinism, and performance sanity guards.
   - **4.9 Documentation & Release Readiness**: 391 unit, integration, and contract tests passing with 0 failures and 0 errors.
+- **Phase 5 (FastAPI REST API, OpenAPI Documentation & Release Readiness)**: Complete ([docs/PHASE_5.md](docs/PHASE_5.md)).
+  - **5.1 API Foundation**: App lifecycle lifespan, versioned routing (`/api/v1`), app metadata, system health probes.
+  - **5.2 Schemas & Validation**: Strict Pydantic v2 schemas for all request/response models with field validation.
+  - **5.3 Analytics Endpoints & Network Analysis**: High-level platform, engagement, time-series, author, topic, sentiment, and co-occurrence hashtag/mention network graph endpoints.
+  - **5.4 Posts, Platforms & Timeline REST API**: Filtered and paginated posts (`/api/v1/posts`), post lookup by ID (`/api/v1/posts/{id}`), platform discovery (`/api/v1/platforms`), and time-bucketed post timeline (`/api/v1/timeline`).
+  - **5.5 Combined Analytics & Dashboard API**: Unified overview endpoint (`/api/v1/analytics/overview`) powering frontend executive KPI cards and visualizations.
+  - **5.6 Standardized Error Handling**: Global exception handlers returning standard `ErrorResponse` schema (400, 404, 422, 500) without internal trace or SQL leakages.
+  - **5.7 API Testing & Hardening**: Hardened parameter boundaries, pagination edge cases, and query validations.
+  - **5.8 OpenAPI Documentation**: Complete OpenAPI 3.1.0 specification with rich tags, descriptions, examples, and interactive Swagger UI / ReDoc.
+  - **5.9 Release Readiness**: Configurable CORS middleware, `.env.example` template, zero-leak production defaults, live startup verification, and 561 passing tests.
+
+---
+
+## Interactive API Documentation
+
+When the backend is running, interactive API documentation is available at:
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- **OpenAPI Schema (JSON)**: [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
 
 ---
 
 ## System Architecture
 
 ```text
-Platform Data (X / Reddit / Telegram / YouTube)
-                        ↓
-                 RawPostPayload
-                        ↓
-                 DataNormalizer
-                        ↓
-                 NormalizedPost
-                        ↓
-             DataQualityService (3.1)
-                        ↓
-               AnalyticsReadyPost
-                        ↓
-        ┌───────────────┼───────────────┐
-        ↓               ↓               ↓
-┌──────────────┐┌──────────────┐┌──────────────┐
-│  Phase 3.2   ││  Phase 3.3   ││  Phase 3.4   │
-│  Sentiment   ││   Emotion    ││ Topic/Narr.  │
-│   Analysis   ││   Analysis   ││  Extraction  │
-└──────────────┘└──────────────┘└──────┬───────┘
-        │               │              │
-        │               │       BatchTopicResult
-        │               │              ↓
-        │               │       ┌──────────────┐
-        │               │       │  Phase 3.5   │
-        │               │       │    Trend     │
-        │               │       │   Analysis   │
-        │               │       └──────┬───────┘
-        │               │              │
-        └───────┬───────┴──────────────┘
-                ↓
-┌────────────────────────────────────────────────────────┐
-│  Phase 3.6: DemographicAnalysisService                 │
-│  (Consumes Posts + Topics + Sentiment + Trends)        │
-└────────────────────────────────────────────────────────┘
-                        ↓
-┌────────────────────────────────────────────────────────┐
-│  Phase 3.7: Unified Analytics API                      │
-│  POST /api/v1/analytics/analyze                        │
-└────────────────────────────────────────────────────────┘
+Browser / Frontend Client (Phase 6: Next.js / Vite / React)
+                           │
+                           ▼  [HTTP / JSON]
+           ┌───────────────────────────────┐
+           │      CORSMiddleware           │  <-- Configurable allowed origins
+           └──────────────┬────────────────┘
+                          ▼
+           ┌───────────────────────────────┐
+           │  Global Exception Handlers    │  <-- Standardized 400/404/422/500 JSON
+           └──────────────┬────────────────┘
+                          ▼
+           ┌───────────────────────────────┐
+           │     FastAPI Router System     │
+           └──────────────┬────────────────┘
+                          │
+     ┌────────────────────┼────────────────────┬────────────────────┐
+     ▼                    ▼                    ▼                    ▼
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐
+│    Health    │   │ Posts & Data │   │  Analytics   │   │ Ingestion & Base │
+│   Endpoints  │   │  & Timeline  │   │  Dashboard   │   │  Analytics Engine│
+│ (/api/v1/..) │   │ (/api/v1/..) │   │ (/api/v1/..) │   │   (/api/v1/..)   │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘   └────────┬─────────┘
+       │                  │                  │                    │
+       ▼                  ▼                  ▼                    ▼
+  Config / DB       SQLAlchemy ORM     AnalyticsEngine     DataNormalizer /
+ Connectivity       (SessionLocal)        Services         Quality Pipeline
 ```
 
 ---
@@ -84,138 +90,129 @@ InsightX/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── errors.py           # Global exception handlers (Phase 5.6)
 │   │   │   ├── routes/
-│   │   │   │   ├── analytics.py    # Analytics REST API (Phase 3.7)
-│   │   │   │   ├── ingestion.py    # Ingestion endpoints (Phase 2)
+│   │   │   │   ├── analytics.py    # High-level analytics & network endpoints (Phase 5.3)
+│   │   │   │   ├── analytics_engine.py # Low-level Analytics Engine API (Phase 4.7)
+│   │   │   │   ├── health.py       # Versioned health probe (Phase 5.1)
+│   │   │   │   ├── ingestion.py    # Raw post ingestion API (Phase 2)
+│   │   │   │   ├── platforms.py    # Platform discovery API (Phase 5.4)
+│   │   │   │   ├── posts.py        # Filtered & paginated post API (Phase 5.4)
+│   │   │   │   ├── timeline.py     # Time-bucketed volume API (Phase 5.4)
 │   │   │   │   └── __init__.py
 │   │   ├── models/                 # SQLAlchemy ORM models (Post, User, Metric, Topic)
 │   │   ├── schemas/                # Pydantic v2 schemas
+│   │   │   ├── analytics.py        # PostSummary, PostListResponse, count & query schemas
 │   │   │   ├── analytics_api.py    # CombinedAnalyzeRequest, CombinedAnalyticsResponse
+│   │   │   ├── common.py           # ErrorDetail, ErrorResponse, HealthResponse
+│   │   │   ├── dashboard.py        # OverviewResponse, TopicSummary, TrendSummary
 │   │   │   ├── data_quality.py     # AnalyticsReadyPost, BatchDataQualityResult
 │   │   │   ├── demographic.py      # DemographicDistribution, BatchDemographicResult
 │   │   │   ├── emotion.py          # EmotionResult, BatchEmotionResult
+│   │   │   ├── platforms.py        # PlatformInfo, PlatformListResponse
 │   │   │   ├── post.py             # RawPostPayload, NormalizedPost
 │   │   │   ├── sentiment.py        # SentimentResult, BatchSentimentResult
+│   │   │   ├── timeline.py         # TimelineBucket, TimelineResponse
 │   │   │   ├── topic.py            # ExtractedTopic, BatchTopicResult
 │   │   │   └── trend.py            # TopicTrendResult, BatchTrendResult
 │   │   ├── services/
 │   │   │   ├── adapters/           # X, Reddit, Telegram, YouTube adapters
-│   │   │   ├── data_quality.py     # Data Quality & sanitization
-│   │   │   ├── demographic/        # Demographic Intelligence engine & service
-│   │   │   ├── emotion/            # Emotion Analysis engine & service
-│   │   │   ├── normalizer.py       # DataNormalizer service
-│   │   │   ├── sentiment/          # Sentiment Analysis engine & service
-│   │   │   ├── topic/              # Topic Extraction engine & service
-│   │   │   └── trend/              # Trend Detection engine & service
-│   │   ├── database.py             # Database engine & session
-│   │   └── main.py                 # FastAPI application
-│   ├── tests/                      # Full test suite (297 tests)
+│   │   │   ├── analytics/          # Advanced Analytics Engines (Phase 4.1–4.6)
+│   │   │   ├── data_quality.py     # Data Quality & sanitization (Phase 3.1)
+│   │   │   ├── demographic/        # Demographic Intelligence engine & service (Phase 3.6)
+│   │   │   ├── emotion/            # Emotion Analysis engine & service (Phase 3.3)
+│   │   │   ├── ingestion.py        # Ingestion service & batch processor (Phase 2)
+│   │   │   ├── normalizer.py       # DataNormalizer service (Phase 2)
+│   │   │   ├── sentiment/          # Sentiment Analysis engine & service (Phase 3.2)
+│   │   │   ├── topic/              # Topic Extraction engine & service (Phase 3.4)
+│   │   │   └── trend/              # Trend Detection engine & service (Phase 3.5)
+│   │   ├── config.py               # Environment configuration & CORS resolution
+│   │   ├── database.py             # Database engine & session management
+│   │   ├── exceptions.py           # Domain exceptions
+│   │   └── main.py                 # FastAPI application definition & middleware
+│   ├── data/
+│   │   └── mock_posts.json         # Realistic multi-platform mock posts dataset
+│   ├── scripts/
+│   │   ├── init_db.py              # Database schema initialization script
+│   │   └── load_mock_data.py       # Ingests mock data through normalization pipeline
+│   ├── tests/                      # Full test suite (561 tests)
+│   │   ├── test_phase5_*.py        # Phase 5 API, schema, error & OpenAPI tests
+│   │   ├── test_phase4_*.py        # Phase 4 engine integration tests
 │   │   ├── test_integration.py     # End-to-end integration tests
 │   │   ├── test_reliability.py     # Robustness, boundary & performance tests
 │   │   └── test_*.py               # Unit tests
+│   ├── .env.example                # Safe environment variable configuration template
 │   └── requirements.txt
-├── docs/                           # Documentation
-│   ├── PHASE_1.md                  # Phase 1 documentation
-│   ├── PHASE_3.md                  # Phase 3 technical documentation
-│   └── PHASE_4.md                  # Phase 4 Advanced Analytics Engine documentation
+├── docs/                           # Technical Specifications
+│   ├── PHASE_1.md                  # Phase 1: Foundation & Database
+│   ├── PHASE_3.md                  # Phase 3: NLP Analytics Platform Foundation
+│   ├── PHASE_4.md                  # Phase 4: Advanced Analytics Engine
+│   └── PHASE_5.md                  # Phase 5: REST API, OpenAPI & Release Readiness
 └── README.md
 ```
 
 ---
 
-## Analytics API Endpoints
+## Core API Endpoint Groups
 
-### Base URL: `http://localhost:8000`
-
-#### Phase 4 Analytics Engine Endpoints (Mounted at `/api/v1/analytics/engine`)
-
+### 1. Health & Readiness (`tags=["Health"]`)
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/v1/analytics/engine/health` | Analytics Engine health check probe |
-| `GET` | `/api/v1/analytics/engine/capabilities` | Runtime metadata on active engines, supported intervals, and capabilities |
-| `POST` | `/api/v1/analytics/engine/analyze` | Full multi-signal Analytics Engine pipeline report (`Phase4AnalyticsReport`) |
-| `POST` | `/api/v1/analytics/engine/engagement` | Specialized engagement profiles, virality indices, and platform breakdowns |
-| `POST` | `/api/v1/analytics/engine/sentiment` | Specialized polarity distributions, Net Sentiment Score, and temporal drift |
-| `POST` | `/api/v1/analytics/engine/trends` | Specialized trend detection, momentum scores, and spike anomalies |
-| `POST` | `/api/v1/analytics/engine/narratives` | Specialized narrative clustering, 6-stage lifecycles, and impact scoring |
-| `POST` | `/api/v1/analytics/engine/time-series` | Specialized temporal interval dynamics, moving averages, and anomalies |
+| `GET` | `/health` | Core service health probe (`{"status": "ok"}`) |
+| `GET` | `/db-health` | PostgreSQL connectivity probe |
+| `GET` | `/api/v1/health` | Detailed version, environment, and subsystem status |
 
-#### Phase 3 Foundation Endpoints
-
+### 2. Posts & Content Discovery (`tags=["Posts"]`)
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Core service health probe |
-| `GET` | `/db-health` | PostgreSQL database connection probe |
-| `POST` | `/api/v1/analytics/sentiment` | Batch/text sentiment polarity & classification |
-| `POST` | `/api/v1/analytics/emotion` | 7-class discrete emotion detection |
-| `POST` | `/api/v1/analytics/topics` | Unsupervised keyword and topic clustering |
-| `POST` | `/api/v1/analytics/trends` | Temporal velocity and trend trajectory classification |
-| `POST` | `/api/v1/analytics/demographics` | Age, gender, and location demographic breakdown |
-| `POST` | `/api/v1/analytics/analyze` | Unified multi-layer Phase 3 analytics orchestration |
+| `GET` | `/api/v1/posts` | Paginated post filtering by platform, sentiment, keyword, metrics, date |
+| `GET` | `/api/v1/posts/{post_id}` | Detailed single post retrieval by ID |
 
----
+### 3. Platforms & Timeline (`tags=["Platforms", "Timeline"]`)
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/platforms` | Supported platform metadata, active post counts, capabilities |
+| `GET` | `/api/v1/timeline` | Time-series post volume aggregated into hour/day/week intervals |
 
-## Example Unified Analytics Request
+### 4. High-Level Analytics & Dashboard (`tags=["Analytics"]`)
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/analytics/overview` | Unified multi-signal dashboard summary (KPIs, platforms, sentiment, trends) |
+| `GET` | `/api/v1/analytics/posts` | Paginated posts matching analytical filters |
+| `GET` | `/api/v1/analytics/count` | Fast count of posts matching filters |
+| `GET` | `/api/v1/analytics/platforms` | Total post volume and engagement by platform |
+| `GET` | `/api/v1/analytics/platforms/compare` | Cross-platform comparative benchmark across metrics and sentiment |
+| `GET` | `/api/v1/analytics/languages` | Language distribution of analyzed posts |
+| `GET` | `/api/v1/analytics/engagement` | Aggregated engagement metrics and engagement rates |
+| `GET` | `/api/v1/analytics/timeseries` | Time-series volume distributions |
+| `GET` | `/api/v1/analytics/timeseries/engagement` | Time-series engagement momentum tracking |
+| `GET` | `/api/v1/analytics/authors` | High-impact author leaderboards |
+| `GET`/`POST` | `/api/v1/analytics/topics` | Extracted keyword clusters and thematic topics |
+| `GET`/`POST` | `/api/v1/analytics/sentiment` | Sentiment distribution and Net Sentiment Score ($\text{NSS}$) |
+| `POST` | `/api/v1/analytics/emotion` | Ekman 7-class emotion classification |
+| `GET`/`POST` | `/api/v1/analytics/trends` | Trending topics with velocity, acceleration, and spike detection |
+| `POST` | `/api/v1/analytics/demographics` | Privacy-preserving demographic aggregations (k-anonymity) |
+| `GET`/`POST` | `/api/v1/analytics/network` | Hashtag and user-mention co-occurrence graph (nodes and weighted edges) |
+| `POST` | `/api/v1/analytics/analyze` | Unified in-memory multi-signal orchestration |
 
-### `POST /api/v1/analytics/analyze`
+### 5. Ingestion Pipeline (`tags=["Ingestion"]`)
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/ingestion/posts` | Ingest a single raw social media post |
+| `POST` | `/api/v1/ingestion/posts/batch` | Batch ingest posts with deduplication |
+| `GET` | `/api/v1/ingestion/platforms` | Discover supported platform adapters |
 
-```json
-{
-  "raw_posts": [
-    {
-      "platform": "X",
-      "external_id": "hyd_metro_001",
-      "text": "Hyderabad metro rail fares increased drastically today! Completely outrageous! #MetroFares",
-      "author_username": "daily_commuter",
-      "author_display_name": "Daily Commuter",
-      "posted_at": "2026-09-08T11:45:00Z",
-      "language": "en",
-      "metrics": {
-        "likes": 120,
-        "shares": 45,
-        "comments": 22
-      },
-      "metadata": {
-        "demographics": {
-          "age": 24,
-          "gender": "female",
-          "city": "Hyderabad",
-          "country": "India"
-        }
-      }
-    },
-    {
-      "platform": "Reddit",
-      "external_id": "ai_tech_002",
-      "text": "Excited about new artificial intelligence technology and machine learning models research.",
-      "author_username": "ai_researcher",
-      "author_display_name": "AI Researcher",
-      "posted_at": "2026-09-08T11:50:00Z",
-      "language": "en",
-      "metrics": {
-        "likes": 85,
-        "shares": 18,
-        "comments": 14
-      },
-      "metadata": {
-        "demographics": {
-          "age": 29,
-          "gender": "male",
-          "city": "Bengaluru",
-          "country": "India"
-        }
-      }
-    }
-  ],
-  "reference_time": "2026-09-08T12:00:00Z",
-  "window_duration_seconds": 3600,
-  "include_sentiment": true,
-  "include_emotion": true,
-  "include_topics": true,
-  "include_trends": true,
-  "include_demographics": true
-}
-```
+### 6. Low-Level Analytics Engine (`tags=["Analytics Engine"]`)
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/analytics/engine/health` | Analytics Engine health probe |
+| `GET` | `/api/v1/analytics/engine/capabilities` | Runtime metadata on active engines |
+| `POST` | `/api/v1/analytics/engine/analyze` | Full multi-signal Analytics Engine report |
+| `POST` | `/api/v1/analytics/engine/engagement` | Engagement profiles, virality indices, outlier detection |
+| `POST` | `/api/v1/analytics/engine/sentiment` | Polarity distributions, Net Sentiment Score, temporal drift |
+| `POST` | `/api/v1/analytics/engine/trends` | Trend detection, momentum scores, spike anomalies |
+| `POST` | `/api/v1/analytics/engine/narratives` | Narrative clustering, 6-stage lifecycles, impact scoring |
+| `POST` | `/api/v1/analytics/engine/time-series` | Temporal interval dynamics, moving averages, anomalies |
 
 ---
 
@@ -226,51 +223,59 @@ InsightX/
 # Navigate to backend directory
 cd backend
 
+# Copy environment configuration template
+cp .env.example .env
+
 # Activate virtual environment
 source .venv/bin/activate
 
 # Install dependencies if needed
 pip install -r requirements.txt
 
-# Start the application
+# Start the application server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 2. Running Test Suite
+### 2. Database Initialization & Mock Data Ingestion
 ```bash
-# Run complete test suite (391 tests)
-.venv/bin/python -m unittest discover -s tests -p "test_*.py"
+# Initialize PostgreSQL schema and tables
+python scripts/init_db.py
 
-# Run Phase 4 end-to-end integration & quality hardening tests
-.venv/bin/python -m unittest tests/test_phase4_integration.py
-
-# Run Phase 4 analytics engine API tests
-.venv/bin/python -m unittest tests/test_analytics_engine_api.py
-
-# Run end-to-end integration tests only
-.venv/bin/python -m unittest tests/test_integration.py
-
-# Run reliability & stress tests only
-.venv/bin/python -m unittest tests/test_reliability.py
+# Ingest realistic multi-platform mock posts dataset
+python scripts/load_mock_data.py
 ```
 
-### 3. Git Quality & Repository Check
+### 3. Running the Test Suite
+```bash
+# Run the complete test suite (561 tests)
+PYTHONPATH=. .venv/bin/pytest
+
+# Run tests with verbose output
+PYTHONPATH=. .venv/bin/pytest -v
+
+# Run specific Phase 5 test modules
+PYTHONPATH=. .venv/bin/pytest tests/test_phase5_api_foundation.py
+PYTHONPATH=. .venv/bin/pytest tests/test_phase5_data_timeline_api.py
+PYTHONPATH=. .venv/bin/pytest tests/test_phase5_combined_analytics.py
+PYTHONPATH=. .venv/bin/pytest tests/test_phase5_openapi.py
+```
+
+### 4. Code Hygiene & Git Checks
 ```bash
 # Verify no trailing whitespace or diff issues
 git diff --check
 
-# Check repository state
+# Check repository working tree status
 git status
 ```
 
 ---
 
-## Known Limitations & Current Assumptions
+## Known Limitations & Production Roadmap
 
 1. **Language Scope**: Sentiment and emotion engines are rule-based and optimized primarily for English text; multilingual posts default to neutral if English tokens are missing.
 2. **Heuristic Topic Clustering**: Topic extraction relies on statistical keyword and n-gram co-occurrence; deep transformer embeddings (BERT/RoBERTa) are scheduled for future enhancement.
 3. **Temporal Trend Windowing**: Trend detection calculates trajectory against the provided historical window; multi-year macroeconomic seasonality is not modeled.
 4. **Explicit Demographics Only**: Demographics strictly aggregate explicit, authorized user metadata; the engine intentionally does not infer sensitive traits from raw text to preserve privacy.
-5. **Public Stream Unknown Coverage**: In raw public feeds where user metadata is sparse, unknown demographic coverage will naturally be high.
-6. **In-Memory Analytics Pipeline**: The `POST /analyze` route computes multi-layer analytics in-memory for the incoming batch and returns responses immediately; long-term analytics warehousing is not automatically triggered.
-7. **Security Scope**: OAuth2/JWT authentication and IP-based rate limiting are not active in Phase 3.
+5. **CORS Security**: Unrestricted wildcard `*` is not used in production; explicit allowed origins must be configured via `CORS_ORIGINS`.
+6. **Authentication Scope**: OAuth2/JWT authentication and per-client API rate limiting are scheduled for post-hackathon enterprise hardening.

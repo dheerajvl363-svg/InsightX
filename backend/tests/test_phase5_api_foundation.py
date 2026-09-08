@@ -12,18 +12,26 @@ import json
 import unittest
 
 from app.main import app
-from app.config import APP_ENV, APP_VERSION
+from app.config import APP_ENV, APP_VERSION, CORS_ORIGINS, get_cors_origins
 
 
 # ---------------------------------------------------------------------------
 # Minimal raw-ASGI call helper (mirrors test_api.py convention)
 # ---------------------------------------------------------------------------
 
-def call_api(method: str, path: str, body: dict = None) -> tuple[int, dict]:
-    """Execute a raw ASGI HTTP request against the FastAPI application."""
+def call_api_full(method: str, path: str, body: dict = None, headers: dict = None) -> tuple[int, dict[str, str], dict]:
+    """Execute a raw ASGI HTTP request against the FastAPI application returning status, headers, data."""
     body_bytes = json.dumps(body).encode() if body is not None else b""
+    raw_headers = [
+        (b"content-type", b"application/json"),
+        (b"content-length", str(len(body_bytes)).encode()),
+    ]
+    if headers:
+        for k, v in headers.items():
+            raw_headers.append((k.lower().encode(), v.encode()))
 
     status_code = None
+    response_headers: dict[str, str] = {}
     response_body: list[bytes] = []
 
     scope = {
@@ -34,10 +42,7 @@ def call_api(method: str, path: str, body: dict = None) -> tuple[int, dict]:
         "path": path,
         "raw_path": path.encode(),
         "query_string": b"",
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body_bytes)).encode()),
-        ],
+        "headers": raw_headers,
     }
 
     async def receive():
@@ -47,6 +52,8 @@ def call_api(method: str, path: str, body: dict = None) -> tuple[int, dict]:
         nonlocal status_code
         if message["type"] == "http.response.start":
             status_code = message["status"]
+            for k, v in message.get("headers", []):
+                response_headers[k.decode().lower()] = v.decode()
         elif message["type"] == "http.response.body":
             response_body.append(message.get("body", b""))
 
@@ -58,6 +65,12 @@ def call_api(method: str, path: str, body: dict = None) -> tuple[int, dict]:
     except Exception:
         data = {"raw_text": raw}
 
+    return status_code, response_headers, data
+
+
+def call_api(method: str, path: str, body: dict = None, headers: dict = None) -> tuple[int, dict]:
+    """Execute a raw ASGI HTTP request against the FastAPI application."""
+    status_code, _, data = call_api_full(method, path, body=body, headers=headers)
     return status_code, data
 
 
@@ -194,6 +207,76 @@ class TestConfigSettings(unittest.TestCase):
     def test_debug_imported(self):
         from app.config import DEBUG  # noqa: F401 — just verifying importability
         self.assertIsInstance(DEBUG, bool)
+
+    def test_cors_origins_is_list(self):
+        self.assertIsInstance(CORS_ORIGINS, list)
+
+    def test_cors_origins_not_empty_in_dev(self):
+        self.assertGreater(len(CORS_ORIGINS), 0)
+        self.assertIn("http://localhost:3000", CORS_ORIGINS)
+        self.assertIn("http://localhost:5173", CORS_ORIGINS)
+
+    def test_cors_origins_custom_parsing(self):
+        parsed = get_cors_origins(env="development", raw_origins="https://app.insightx.com, https://admin.insightx.com ")
+        self.assertEqual(parsed, ["https://app.insightx.com", "https://admin.insightx.com"])
+
+    def test_cors_origins_production_default_empty(self):
+        # Production default must be secure and never unrestricted wildcard
+        parsed = get_cors_origins(env="production", raw_origins="")
+        self.assertEqual(parsed, [])
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.9: CORS Behavior & Preflight Tests
+# ---------------------------------------------------------------------------
+
+class TestCORSBehavior(unittest.TestCase):
+    """Validates CORS middleware headers for preflight and standard requests."""
+
+    def test_preflight_allowed_origin(self):
+        status, headers, _ = call_api_full(
+            "OPTIONS",
+            "/api/v1/health",
+            headers={
+                "origin": "http://localhost:3000",
+                "access-control-request-method": "GET",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("access-control-allow-origin"), "http://localhost:3000")
+        self.assertEqual(headers.get("access-control-allow-credentials"), "true")
+
+    def test_preflight_disallowed_origin(self):
+        status, headers, _ = call_api_full(
+            "OPTIONS",
+            "/api/v1/health",
+            headers={
+                "origin": "http://untrusted-external-site.com",
+                "access-control-request-method": "GET",
+            },
+        )
+        self.assertNotIn("access-control-allow-origin", headers)
+
+    def test_get_request_allowed_origin(self):
+        status, headers, data = call_api_full(
+            "GET",
+            "/api/v1/health",
+            headers={"origin": "http://localhost:5173"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("access-control-allow-origin"), "http://localhost:5173")
+        self.assertEqual(headers.get("access-control-allow-credentials"), "true")
+        self.assertEqual(data.get("status"), "ok")
+
+    def test_get_request_disallowed_origin(self):
+        status, headers, data = call_api_full(
+            "GET",
+            "/api/v1/health",
+            headers={"origin": "http://malicious-origin.com"},
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn("access-control-allow-origin", headers)
+        self.assertEqual(data.get("status"), "ok")
 
 
 if __name__ == "__main__":
