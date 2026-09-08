@@ -31,4 +31,20 @@ class TimelineResponse(BaseModel):
         default_factory=list, description="Chronological time buckets"
     )
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "granularity": "day",
+                "total_buckets": 1,
+                "total_posts": 42,
+                "buckets": [
+                    {
+                        "timestamp": "2026-09-08T00:00:00Z",
+                        "count": 42,
+                        "platform_breakdown": {"X": 25, "Telegram": 17},
+                    }
+                ],
+            }
+        },
+    )

@@ -153,7 +153,7 @@ class TestApplicationMetadata(unittest.TestCase):
     """Validates that app metadata is correctly propagated from config."""
 
     def test_app_title(self):
-        self.assertEqual(app.title, "InsightX API")
+        self.assertEqual(app.title, "InsightX Social Media Analytics API")
 
     def test_app_version_matches_config(self):
         self.assertEqual(app.version, APP_VERSION)
@@ -169,7 +169,7 @@ class TestApplicationMetadata(unittest.TestCase):
 
     def test_app_openapi_schema_has_title(self):
         schema = app.openapi()
-        self.assertEqual(schema["info"]["title"], "InsightX API")
+        self.assertEqual(schema["info"]["title"], "InsightX Social Media Analytics API")
 
 
 # ---------------------------------------------------------------------------

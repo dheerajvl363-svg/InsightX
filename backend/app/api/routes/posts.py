@@ -2,11 +2,12 @@ from datetime import datetime
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.analytics import PostListResponse, PostSummary
+from app.schemas.common import ErrorResponse
 from app.services.analytics import AnalyticsService, ALLOWED_SORT_BY
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,12 @@ def validate_date_range(start: Optional[datetime], end: Optional[datetime]):
     "",
     response_model=PostListResponse,
     summary="List Social Media Posts",
-    description="Returns a paginated list of social media posts matching optional platform, date range, search, and sorting criteria.",
+    description="Returns a paginated list of social media posts matching optional platform, date range, search, author, metric, and sorting criteria.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid query filter parameters or date bounds."},
+        422: {"description": "Validation error on input parameter types or boundaries."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_posts(
     platform: Optional[str] = Query(None, description="Filter by platform name"),
@@ -89,14 +95,19 @@ def get_posts(
         )
 
 
+
 @router.get(
     "/{post_id}",
     response_model=PostSummary,
     summary="Get Single Post by ID",
     description="Retrieves a single social media post record by its internal database primary key.",
+    responses={
+        404: {"model": ErrorResponse, "description": "Post not found for the given post_id."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_post_by_id(
-    post_id: int,
+    post_id: int = Path(..., description="Internal post primary key ID", ge=1),
     db: Session = Depends(get_db),
 ) -> PostSummary:
     try:

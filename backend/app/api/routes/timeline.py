@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.schemas.common import ErrorResponse
 from app.schemas.timeline import TimelineResponse
 from app.services.analytics import AnalyticsService
 
@@ -27,6 +28,11 @@ def validate_date_range(start: Optional[datetime], end: Optional[datetime]):
     response_model=TimelineResponse,
     summary="Get Time-Bucketed Post Timeline",
     description="Computes post activity volume and per-platform distribution aggregated chronologically into time buckets ('hour', 'day', 'week').",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid date range bounds or granularity string."},
+        422: {"description": "Validation error on query parameter types."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_timeline(
     platform: Optional[str] = Query(None, description="Filter by platform name"),

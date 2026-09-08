@@ -20,7 +20,30 @@ class PostSummary(BaseModel):
     metrics: Optional[PostMetricsSchema] = Field(default=None, description="Latest engagement metrics")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Metadata dictionary")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "platform": "X",
+                "external_post_id": "ext_101",
+                "text": "Artificial Intelligence in health and technology. #AI #Tech",
+                "author_username": "tech_lead",
+                "author_display_name": "Tech Lead",
+                "posted_at": "2026-09-08T12:00:00Z",
+                "collected_at": "2026-09-08T12:00:00Z",
+                "url": "https://x.com/tech_lead/status/101",
+                "language": "en",
+                "metrics": {
+                    "likes": 150,
+                    "comments": 25,
+                    "shares": 30,
+                    "views": 1200,
+                },
+                "metadata": {},
+            }
+        },
+    )
 
 
 class PostListResponse(BaseModel):
@@ -29,6 +52,38 @@ class PostListResponse(BaseModel):
     limit: int = Field(..., description="Maximum records returned in this page")
     offset: int = Field(..., description="Offset position")
     items: List[PostSummary] = Field(default_factory=list, description="List of post records")
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "total": 1,
+                "limit": 50,
+                "offset": 0,
+                "items": [
+                    {
+                        "id": 1,
+                        "platform": "X",
+                        "external_post_id": "ext_101",
+                        "text": "Artificial Intelligence in health and technology. #AI #Tech",
+                        "author_username": "tech_lead",
+                        "author_display_name": "Tech Lead",
+                        "posted_at": "2026-09-08T12:00:00Z",
+                        "collected_at": "2026-09-08T12:00:00Z",
+                        "url": "https://x.com/tech_lead/status/101",
+                        "language": "en",
+                        "metrics": {
+                            "likes": 150,
+                            "comments": 25,
+                            "shares": 30,
+                            "views": 1200,
+                        },
+                        "metadata": {},
+                    }
+                ],
+            }
+        },
+    )
 
 
 class CountResponse(BaseModel):

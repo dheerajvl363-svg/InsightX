@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.schemas.common import ErrorResponse
 from app.schemas.analytics import (
     AuthorListResponse,
     CountResponse,
@@ -939,6 +940,11 @@ def analyze_all(
     response_model=BatchSentimentResult,
     summary="Get Sentiment Analysis for Database Posts",
     description="Retrieves sentiment analysis and distribution for posts stored in the database matching optional filter criteria.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid query filter parameters or date range."},
+        422: {"description": "Validation error on parameter type or boundary bounds."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_sentiment_analytics(
     platform: Optional[str] = Query(None, description="Filter by platform name"),
@@ -980,6 +986,11 @@ def get_sentiment_analytics(
     response_model=BatchTrendResult,
     summary="Get Trend Detection for Database Posts",
     description="Retrieves trend momentum and trajectory analysis for posts stored in the database matching optional filter criteria.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid query filter parameters or date range."},
+        422: {"description": "Validation error on parameter type or boundary bounds."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_trend_analytics(
     platform: Optional[str] = Query(None, description="Filter by platform name"),
@@ -1029,6 +1040,11 @@ def get_trend_analytics(
     response_model=BatchNetworkResult,
     summary="Get Network & Influence Analysis for Database Posts",
     description="Retrieves interaction graph, influencer rankings, and domain sharing summary for database posts matching filters.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid query filter parameters or date range."},
+        422: {"description": "Validation error on parameter type or boundary bounds."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_network_analytics(
     platform: Optional[str] = Query(None, description="Filter by platform name"),
@@ -1070,6 +1086,11 @@ def get_network_analytics(
     response_model=BatchNetworkResult,
     summary="Network & Influence Analysis",
     description="Computes interaction graph structure, node degrees, author influence rankings, and domain sharing.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid payload format or missing content."},
+        422: {"description": "Validation error on request body."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal error during network analysis."},
+    },
 )
 def analyze_network(
     payload: NetworkAnalyzeRequest,
@@ -1105,6 +1126,11 @@ def analyze_network(
     response_model=DashboardOverviewResponse,
     summary="High-Level Dashboard Overview",
     description="Provides a consolidated dashboard snapshot synthesizing engagement metrics, platform summaries, sentiment analysis, topic clusters, trend momentum, and network influence.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid query filter parameters or date bounds."},
+        422: {"description": "Validation error on parameter input types."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_dashboard_overview(
     platform: Optional[str] = Query(None, description="Filter by platform name"),
@@ -1142,6 +1168,11 @@ def get_dashboard_overview(
     response_model=PlatformComparisonResponse,
     summary="Multi-Platform Comparative Analytics",
     description="Provides cross-platform metrics comparison synthesizing post counts, aggregate engagement, and sentiment distribution.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid date range parameters."},
+        422: {"description": "Validation error on parameter types."},
+        500: {"model": ErrorResponse, "description": "Unexpected internal database or service error."},
+    },
 )
 def get_platform_comparison(
     start_date: Optional[datetime] = Query(None, description="Start date filter"),

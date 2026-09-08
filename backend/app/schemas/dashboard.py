@@ -71,4 +71,34 @@ class PlatformComparisonResponse(BaseModel):
     )
     generated_at: datetime = Field(..., description="Report generation timestamp in UTC")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "total_platforms": 2,
+                "platforms": [
+                    {
+                        "platform": "X",
+                        "post_count": 100,
+                        "total_likes": 5000,
+                        "total_comments": 800,
+                        "total_shares": 450,
+                        "total_views": 45000,
+                        "avg_engagement": 62.5,
+                        "sentiment_breakdown": {"positive": 60, "neutral": 30, "negative": 10},
+                    },
+                    {
+                        "platform": "Telegram",
+                        "post_count": 50,
+                        "total_likes": 1200,
+                        "total_comments": 200,
+                        "total_shares": 90,
+                        "total_views": 15000,
+                        "avg_engagement": 29.8,
+                        "sentiment_breakdown": {"positive": 25, "neutral": 20, "negative": 5},
+                    },
+                ],
+                "generated_at": "2026-09-08T12:00:00Z",
+            }
+        },
+    )

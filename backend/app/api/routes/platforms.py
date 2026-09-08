@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.schemas.common import ErrorResponse
 from app.schemas.platform import PlatformResponse
 from app.services.analytics import AnalyticsService
 
@@ -18,6 +19,9 @@ router = APIRouter(tags=["Platforms"])
     response_model=List[PlatformResponse],
     summary="List Registered Platforms",
     description="Returns list of canonical platform definitions registered in InsightX.",
+    responses={
+        500: {"model": ErrorResponse, "description": "Unexpected internal server error."},
+    },
 )
 def get_platforms(
     db: Session = Depends(get_db),

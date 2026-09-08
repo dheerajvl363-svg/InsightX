@@ -70,7 +70,21 @@ class HealthResponse(BaseModel):
         description="Per-subsystem readiness map (subsystem → status string)",
     )
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "status": "ok",
+                "version": "1.0.0",
+                "environment": "production",
+                "services": {
+                    "analytics_engine": "ok",
+                    "ingestion": "ok",
+                    "analytics": "ok",
+                },
+            }
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +253,23 @@ class ErrorResponse(BaseModel):
         description="Correlation ID for tracing, if available.",
     )
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "error": "bad_request",
+                "message": "start_date cannot be after end_date.",
+                "details": [
+                    {
+                        "field": "start_date",
+                        "message": "start_date (2026-09-10) must be <= end_date (2026-09-01)",
+                        "code": "value_error",
+                    }
+                ],
+                "request_id": "req-8f92a10",
+            }
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

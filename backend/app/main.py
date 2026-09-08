@@ -31,16 +31,48 @@ async def lifespan(application: FastAPI):  # noqa: RUF029
     yield
     logger.info("InsightX API shutting down.")
 
+tags_metadata = [
+    {
+        "name": "Health",
+        "description": "System readiness, database connectivity, and subsystem status probes.",
+    },
+    {
+        "name": "Posts",
+        "description": "Social media post retrieval, full-text searching, metrics filtering, and pagination.",
+    },
+    {
+        "name": "Platforms",
+        "description": "Supported platform discovery and metadata enumeration.",
+    },
+    {
+        "name": "Timeline",
+        "description": "Chronological post volume aggregations and platform distribution timeline bucketing.",
+    },
+    {
+        "name": "Analytics",
+        "description": "High-level dashboard analytics: sentiment, topics, trends, network graphs, overview, and platform comparisons.",
+    },
+    {
+        "name": "Ingestion",
+        "description": "Raw post ingestion, batch processing, and adapter discovery.",
+    },
+    {
+        "name": "Analytics Engine",
+        "description": "Standalone low-level NLP, sentiment, trend, narrative, and demographic analysis services.",
+    },
+]
+
 app = FastAPI(
-    title="InsightX API",
+    title="InsightX Social Media Analytics API",
     description=(
-        "Social Media Analytics — Data Ingestion, Storage & Multi-Layer Analytics Engine. "
-        "Phases 0–5: ingestion adapters, normalisation, engagement analytics, sentiment, "
-        "trend momentum, narrative intelligence, and time-series dynamics."
+        "InsightX provides AI-driven multi-platform social media intelligence across X, Telegram, "
+        "Reddit, and YouTube. Features data ingestion, automated normalisation, engagement analytics, "
+        "sentiment detection, trend momentum tracking, narrative cluster analysis, and time-series dynamic modeling."
     ),
     version=APP_VERSION,
     debug=DEBUG,
     lifespan=lifespan,
+    openapi_tags=tags_metadata,
 )
 
 # --- Phase 5.6: Global exception handlers ---
