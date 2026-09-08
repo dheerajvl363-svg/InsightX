@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.analytics import (
+    AuthorListResponse,
     CountResponse,
     EngagementSummary,
     LanguageSummary,
@@ -22,6 +23,13 @@ router = APIRouter(tags=["Analytics"])
 
 
 ALLOWED_SORT_BY = {"posted_at", "likes", "comments", "shares", "views"}
+ALLOWED_AUTHOR_SORT_BY = {
+    "post_count",
+    "total_likes",
+    "total_comments",
+    "total_shares",
+    "total_views",
+}
 ALLOWED_ORDER = {"asc", "desc"}
 
 
@@ -41,6 +49,25 @@ def validate_sort_params(sort_by: Optional[str], order: Optional[str]) -> tuple[
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_SORT_BY))}.",
+        )
+
+    clean_order = (order or "desc").strip().lower()
+    if clean_order not in ALLOWED_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid order '{order}'. Supported orders: {', '.join(sorted(ALLOWED_ORDER))}.",
+        )
+
+    return clean_sort_by, clean_order
+
+
+def validate_author_sort_params(sort_by: Optional[str], order: Optional[str]) -> tuple[str, str]:
+    """Helper to validate author sort_by and order query parameters."""
+    clean_sort_by = (sort_by or "post_count").strip().lower()
+    if clean_sort_by not in ALLOWED_AUTHOR_SORT_BY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid sort_by field '{sort_by}'. Supported fields: {', '.join(sorted(ALLOWED_AUTHOR_SORT_BY))}.",
         )
 
     clean_order = (order or "desc").strip().lower()
@@ -246,4 +273,52 @@ def get_timeseries(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while generating time-series analytics.",
+        )
+
+
+@router.get(
+    "/authors",
+    response_model=AuthorListResponse,
+    summary="Author analytics summary",
+    description="Returns aggregated post counts and engagement metrics grouped by author.",
+)
+def get_authors(
+    platform: Optional[str] = Query(None, description="Filter by platform name"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    search: Optional[str] = Query(None, description="Case-insensitive substring search in post text"),
+    sort_by: Optional[str] = Query("post_count", description="Field to sort by ('post_count', 'total_likes', 'total_comments', 'total_shares', 'total_views')"),
+    order: Optional[str] = Query("desc", description="Sort order ('asc' or 'desc')"),
+    limit: int = Query(50, ge=1, le=200, description="Max authors to return (1-200)"),
+    offset: int = Query(0, ge=0, description="Offset position for pagination"),
+    db: Session = Depends(get_db),
+) -> AuthorListResponse:
+    validate_date_range(start_date, end_date)
+    clean_sort_by, clean_order = validate_author_sort_params(sort_by, order)
+    try:
+        service = AnalyticsService(db)
+        return service.get_author_summary(
+            platform=platform,
+            language=language,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            sort_by=clean_sort_by,
+            order=clean_order,
+            limit=limit,
+            offset=offset,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving author summary: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while retrieving author summary.",
         )

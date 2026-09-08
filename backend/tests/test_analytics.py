@@ -11,6 +11,8 @@ from app.models.platform import Platform
 from app.models.post import Post
 from app.models.user import User
 from app.schemas.analytics import (
+    AuthorListResponse,
+    AuthorSummary,
     CountResponse,
     EngagementSummary,
     LanguageSummary,
@@ -73,6 +75,7 @@ class TestAnalyticsService(unittest.TestCase):
         self.db = SessionLocal()
         self.service = AnalyticsService(self.db)
         self.temp_post_ids = []
+        self.temp_user_ids = []
 
     def tearDown(self):
         if self.temp_post_ids:
@@ -80,6 +83,11 @@ class TestAnalyticsService(unittest.TestCase):
                 synchronize_session=False
             )
             self.db.query(Post).filter(Post.id.in_(self.temp_post_ids)).delete(
+                synchronize_session=False
+            )
+            self.db.commit()
+        if hasattr(self, "temp_user_ids") and self.temp_user_ids:
+            self.db.query(User).filter(User.id.in_(self.temp_user_ids)).delete(
                 synchronize_session=False
             )
             self.db.commit()
@@ -616,6 +624,311 @@ class TestAnalyticsService(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.get_posts(order="invalid_dir")
 
+    # --- Component 8.4: Author Analytics Aggregation service tests ---
+
+    def test_46_author_summary_basic(self):
+        res = self.service.get_author_summary(limit=5, offset=0)
+        self.assertIsInstance(res, AuthorListResponse)
+        self.assertGreater(res.total, 0)
+        self.assertEqual(res.limit, 5)
+        self.assertEqual(res.offset, 0)
+        self.assertLessEqual(len(res.items), 5)
+        item = res.items[0]
+        self.assertIsInstance(item, AuthorSummary)
+        self.assertIsNotNone(item.username)
+        self.assertIsNotNone(item.platform)
+        self.assertGreater(item.post_count, 0)
+        self.assertGreaterEqual(item.total_likes, 0)
+        self.assertGreaterEqual(item.total_comments, 0)
+        self.assertGreaterEqual(item.total_shares, 0)
+        self.assertGreaterEqual(item.total_views, 0)
+        self.assertGreaterEqual(item.avg_likes, 0.0)
+        self.assertGreaterEqual(item.avg_comments, 0.0)
+        self.assertGreaterEqual(item.avg_shares, 0.0)
+        self.assertGreaterEqual(item.avg_views, 0.0)
+        self.assertIsNotNone(item.earliest_post)
+        self.assertIsNotNone(item.latest_post)
+
+    def test_47_author_summary_multiple_posts_and_averages(self):
+        u = User(platform_id=1, username="c84_multi_author", display_name="Multi Author")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t1 = datetime(2026, 1, 1, 10, 0, 0)
+        t2 = datetime(2026, 1, 2, 10, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c84_p1",
+            text="c84_multi_post_keyword post 1",
+            posted_at=t1,
+            collected_at=t1,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c84_p2",
+            text="c84_multi_post_keyword post 2",
+            posted_at=t2,
+            collected_at=t2,
+            language="en",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        m1 = PostMetric(post_id=p1.id, collected_at=t1, likes=100, comments=10, shares=4, views=1000)
+        m2 = PostMetric(post_id=p2.id, collected_at=t2, likes=200, comments=30, shares=16, views=3000)
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        res = self.service.get_author_summary(search="c84_multi_post_keyword")
+        self.assertEqual(res.total, 1)
+        self.assertEqual(len(res.items), 1)
+        author = res.items[0]
+        self.assertEqual(author.username, "c84_multi_author")
+        self.assertEqual(author.display_name, "Multi Author")
+        self.assertEqual(author.platform, "X")
+        self.assertEqual(author.post_count, 2)
+        self.assertEqual(author.total_likes, 300)
+        self.assertEqual(author.total_comments, 40)
+        self.assertEqual(author.total_shares, 20)
+        self.assertEqual(author.total_views, 4000)
+        self.assertEqual(author.avg_likes, 150.0)
+        self.assertEqual(author.avg_comments, 20.0)
+        self.assertEqual(author.avg_shares, 10.0)
+        self.assertEqual(author.avg_views, 2000.0)
+        self.assertEqual(author.earliest_post, t1)
+        self.assertEqual(author.latest_post, t2)
+
+    def test_48_author_summary_post_without_metrics(self):
+        u = User(platform_id=1, username="c84_no_metric_author", display_name="No Metric")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t = datetime(2026, 1, 3, 10, 0, 0)
+        p = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c84_no_metric_p",
+            text="c84_no_metric_keyword text",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add(p)
+        self.db.commit()
+        self.temp_post_ids.append(p.id)
+
+        res = self.service.get_author_summary(search="c84_no_metric_keyword")
+        self.assertEqual(res.total, 1)
+        author = res.items[0]
+        self.assertEqual(author.post_count, 1)
+        self.assertEqual(author.total_likes, 0)
+        self.assertEqual(author.total_comments, 0)
+        self.assertEqual(author.total_shares, 0)
+        self.assertEqual(author.total_views, 0)
+        self.assertEqual(author.avg_likes, 0.0)
+        self.assertEqual(author.avg_comments, 0.0)
+        self.assertEqual(author.avg_shares, 0.0)
+        self.assertEqual(author.avg_views, 0.0)
+
+    def test_49_author_summary_multiple_snapshots_latest_collected_at_wins(self):
+        u = User(platform_id=1, username="c84_snap_author", display_name="Snapshot Author")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t = datetime(2026, 1, 4, 10, 0, 0)
+        p = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c84_snap_p",
+            text="c84_snap_keyword text",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add(p)
+        self.db.commit()
+        self.temp_post_ids.append(p.id)
+
+        # Older snapshot: collected earlier with MORE likes
+        m_older = PostMetric(post_id=p.id, collected_at=datetime(2026, 1, 4, 11, 0, 0), likes=888)
+        # Newer snapshot: collected later with FEWER likes
+        m_newer = PostMetric(post_id=p.id, collected_at=datetime(2026, 1, 4, 12, 0, 0), likes=77)
+        self.db.add_all([m_older, m_newer])
+        self.db.commit()
+
+        res = self.service.get_author_summary(search="c84_snap_keyword")
+        self.assertEqual(res.total, 1)
+        author = res.items[0]
+        # Only the newer snapshot must contribute (77), not 888 and not 888+77=965
+        self.assertEqual(author.total_likes, 77)
+        self.assertEqual(author.avg_likes, 77.0)
+
+    def test_50_author_summary_multiple_snapshots_tie_breaker_id_wins(self):
+        u = User(platform_id=1, username="c84_tie_snap_author", display_name="Tie Snap Author")
+        self.db.add(u)
+        self.db.commit()
+        self.temp_user_ids.append(u.id)
+
+        t = datetime(2026, 1, 5, 10, 0, 0)
+        p = Post(
+            platform_id=1,
+            user_id=u.id,
+            external_post_id="c84_tie_snap_p",
+            text="c84_tie_snap_keyword text",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add(p)
+        self.db.commit()
+        self.temp_post_ids.append(p.id)
+
+        # Exact same collected_at timestamp
+        snap_time = datetime(2026, 1, 5, 12, 0, 0)
+        m1 = PostMetric(post_id=p.id, collected_at=snap_time, likes=100)
+        self.db.add(m1)
+        self.db.commit()
+
+        m2 = PostMetric(post_id=p.id, collected_at=snap_time, likes=450)
+        self.db.add(m2)
+        self.db.commit()
+        # m2.id > m1.id, so m2 wins
+        self.assertGreater(m2.id, m1.id)
+
+        res = self.service.get_author_summary(search="c84_tie_snap_keyword")
+        self.assertEqual(res.total, 1)
+        author = res.items[0]
+        self.assertEqual(author.total_likes, 450)
+
+    def test_51_author_summary_platform_filter(self):
+        res = self.service.get_author_summary(platform="Telegram")
+        self.assertGreater(res.total, 0)
+        for author in res.items:
+            self.assertEqual(author.platform, "Telegram")
+
+    def test_52_author_summary_language_filter(self):
+        res = self.service.get_author_summary(language="te")
+        self.assertGreater(res.total, 0)
+        usernames = {a.username for a in res.items}
+        self.assertIn("telugu_science_hub", usernames)
+
+    def test_53_author_summary_date_filter(self):
+        start = datetime(2026, 9, 2, 0, 0, 0)
+        end = datetime(2026, 9, 2, 23, 59, 59)
+        res = self.service.get_author_summary(start_date=start, end_date=end)
+        self.assertGreater(res.total, 0)
+        for author in res.items:
+            self.assertGreaterEqual(author.earliest_post, start)
+            self.assertLessEqual(author.latest_post, end)
+
+    def test_54_author_summary_search_filter(self):
+        res = self.service.get_author_summary(search="ISRO")
+        self.assertGreater(res.total, 0)
+        for a in res.items:
+            self.assertGreater(a.post_count, 0)
+
+    def test_55_author_summary_sort_post_count_desc_and_asc(self):
+        desc = self.service.get_author_summary(sort_by="post_count", order="desc", limit=10)
+        for i in range(len(desc.items) - 1):
+            self.assertGreaterEqual(desc.items[i].post_count, desc.items[i + 1].post_count)
+
+        asc = self.service.get_author_summary(sort_by="post_count", order="asc", limit=10)
+        for i in range(len(asc.items) - 1):
+            self.assertLessEqual(asc.items[i].post_count, asc.items[i + 1].post_count)
+
+    def test_56_author_summary_sort_total_likes_and_views(self):
+        likes_desc = self.service.get_author_summary(sort_by="total_likes", order="desc", limit=10)
+        for i in range(len(likes_desc.items) - 1):
+            self.assertGreaterEqual(likes_desc.items[i].total_likes, likes_desc.items[i + 1].total_likes)
+
+        views_desc = self.service.get_author_summary(sort_by="total_views", order="desc", limit=10)
+        for i in range(len(views_desc.items) - 1):
+            self.assertGreaterEqual(views_desc.items[i].total_views, views_desc.items[i + 1].total_views)
+
+    def test_57_author_summary_pagination(self):
+        page1 = self.service.get_author_summary(limit=3, offset=0)
+        page2 = self.service.get_author_summary(limit=3, offset=3)
+        self.assertEqual(len(page1.items), 3)
+        self.assertEqual(len(page2.items), 3)
+        p1_authors = {(a.username, a.platform) for a in page1.items}
+        p2_authors = {(a.username, a.platform) for a in page2.items}
+        self.assertEqual(len(p1_authors.intersection(p2_authors)), 0)
+
+    def test_58_author_summary_deterministic_ordering_tie_breaker(self):
+        u1 = User(platform_id=1, username="c84_tie_author_aaa", display_name="AAA")
+        u2 = User(platform_id=1, username="c84_tie_author_zzz", display_name="ZZZ")
+        self.db.add_all([u1, u2])
+        self.db.commit()
+        self.temp_user_ids.extend([u1.id, u2.id])
+
+        t = datetime(2026, 1, 6, 10, 0, 0)
+        p1 = Post(
+            platform_id=1,
+            user_id=u1.id,
+            external_post_id="c84_tie_p1",
+            text="c84_det_tie_keyword p1",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        p2 = Post(
+            platform_id=1,
+            user_id=u2.id,
+            external_post_id="c84_tie_p2",
+            text="c84_det_tie_keyword p2",
+            posted_at=t,
+            collected_at=t,
+            language="en",
+        )
+        self.db.add_all([p1, p2])
+        self.db.commit()
+        self.temp_post_ids.extend([p1.id, p2.id])
+
+        # Same metrics
+        m1 = PostMetric(post_id=p1.id, collected_at=t, likes=333)
+        m2 = PostMetric(post_id=p2.id, collected_at=t, likes=333)
+        self.db.add_all([m1, m2])
+        self.db.commit()
+
+        res_desc = self.service.get_author_summary(search="c84_det_tie_keyword", sort_by="total_likes", order="desc")
+        self.assertEqual(len(res_desc.items), 2)
+        # Descending: username zzz before aaa
+        self.assertEqual(res_desc.items[0].username, "c84_tie_author_zzz")
+        self.assertEqual(res_desc.items[1].username, "c84_tie_author_aaa")
+
+        res_asc = self.service.get_author_summary(search="c84_det_tie_keyword", sort_by="total_likes", order="asc")
+        self.assertEqual(len(res_asc.items), 2)
+        # Ascending: username aaa before zzz
+        self.assertEqual(res_asc.items[0].username, "c84_tie_author_aaa")
+        self.assertEqual(res_asc.items[1].username, "c84_tie_author_zzz")
+
+    def test_59_author_summary_invalid_sort_and_order_validation(self):
+        with self.assertRaises(ValueError):
+            self.service.get_author_summary(sort_by="unsupported_column")
+        with self.assertRaises(ValueError):
+            self.service.get_author_summary(order="upside_down")
+
+    def test_60_author_summary_combined_filters_and_sorting(self):
+        res = self.service.get_author_summary(
+            platform="YouTube",
+            language="en",
+            search="India",
+            sort_by="total_likes",
+            order="desc",
+        )
+        self.assertIsInstance(res, AuthorListResponse)
+        for a in res.items:
+            self.assertEqual(a.platform, "YouTube")
+        for i in range(len(res.items) - 1):
+            self.assertGreaterEqual(res.items[i].total_likes, res.items[i + 1].total_likes)
+
 
 class TestAnalyticsAPI(unittest.TestCase):
     """
@@ -894,6 +1207,77 @@ class TestAnalyticsAPI(unittest.TestCase):
                 v1 = items[i]["metrics"]["views"]
                 v2 = items[i + 1]["metrics"]["views"] if items[i + 1].get("metrics") else 0
                 self.assertGreaterEqual(v1, v2)
+
+    # --- Component 8.4: Author Analytics Aggregation API tests ---
+
+    def test_38_get_authors_endpoint_basic(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?limit=5&offset=0")
+        self.assertEqual(code, 200)
+        self.assertIn("total", data)
+        self.assertIn("items", data)
+        self.assertEqual(data["limit"], 5)
+        self.assertEqual(data["offset"], 0)
+        self.assertGreater(data["total"], 0)
+        self.assertLessEqual(len(data["items"]), 5)
+        item = data["items"][0]
+        self.assertIn("username", item)
+        self.assertIn("platform", item)
+        self.assertIn("post_count", item)
+        self.assertIn("total_likes", item)
+        self.assertIn("total_comments", item)
+        self.assertIn("total_shares", item)
+        self.assertIn("total_views", item)
+        self.assertIn("avg_likes", item)
+        self.assertIn("avg_comments", item)
+        self.assertIn("avg_shares", item)
+        self.assertIn("avg_views", item)
+        self.assertIn("earliest_post", item)
+        self.assertIn("latest_post", item)
+
+    def test_39_get_authors_endpoint_platform_filter(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?platform=YouTube")
+        self.assertEqual(code, 200)
+        self.assertGreater(len(data["items"]), 0)
+        for item in data["items"]:
+            self.assertEqual(item["platform"], "YouTube")
+
+    def test_40_get_authors_endpoint_sort_total_likes_desc(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?sort_by=total_likes&order=desc&limit=10")
+        self.assertEqual(code, 200)
+        items = data["items"]
+        self.assertGreater(len(items), 1)
+        for i in range(len(items) - 1):
+            self.assertGreaterEqual(items[i]["total_likes"], items[i + 1]["total_likes"])
+
+    def test_41_get_authors_endpoint_sort_post_count_asc(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?sort_by=post_count&order=asc&limit=10")
+        self.assertEqual(code, 200)
+        items = data["items"]
+        self.assertGreater(len(items), 1)
+        for i in range(len(items) - 1):
+            self.assertLessEqual(items[i]["post_count"], items[i + 1]["post_count"])
+
+    def test_42_get_authors_endpoint_invalid_sort_by_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?sort_by=unsupported_metric")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid sort_by", data.get("detail", ""))
+
+    def test_43_get_authors_endpoint_invalid_order_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?order=backward")
+        self.assertEqual(code, 400)
+        self.assertIn("Invalid order", data.get("detail", ""))
+
+    def test_44_get_authors_endpoint_invalid_date_range_400(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?start_date=2026-12-01T00:00:00&end_date=2026-01-01T00:00:00")
+        self.assertEqual(code, 400)
+        self.assertIn("start_date cannot be after end_date", data.get("detail", ""))
+
+    def test_45_get_authors_endpoint_combined_search_and_pagination(self):
+        code, data = call_api("GET", "/api/v1/analytics/authors?search=india&limit=2&offset=0")
+        self.assertEqual(code, 200)
+        self.assertEqual(data["limit"], 2)
+        self.assertEqual(data["offset"], 0)
+        self.assertLessEqual(len(data["items"]), 2)
 
 
 if __name__ == "__main__":

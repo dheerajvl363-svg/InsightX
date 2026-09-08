@@ -65,6 +65,32 @@ class EngagementSummary(BaseModel):
     avg_views: float = Field(default=0.0, description="Average views per post")
 
 
+class AuthorSummary(BaseModel):
+    """Aggregated analytics summary for a specific author."""
+    username: str = Field(..., description="Author username")
+    display_name: Optional[str] = Field(default=None, description="Author display name")
+    platform: str = Field(..., description="Platform name")
+    post_count: int = Field(..., description="Total posts by author matching filters")
+    total_likes: int = Field(default=0, description="Sum of likes")
+    total_comments: int = Field(default=0, description="Sum of comments/replies")
+    total_shares: int = Field(default=0, description="Sum of shares/retweets")
+    total_views: int = Field(default=0, description="Sum of views/impressions")
+    avg_likes: float = Field(default=0.0, description="Average likes per post")
+    avg_comments: float = Field(default=0.0, description="Average comments per post")
+    avg_shares: float = Field(default=0.0, description="Average shares per post")
+    avg_views: float = Field(default=0.0, description="Average views per post")
+    earliest_post: Optional[datetime] = Field(default=None, description="Earliest post timestamp by author")
+    latest_post: Optional[datetime] = Field(default=None, description="Latest post timestamp by author")
+
+
+class AuthorListResponse(BaseModel):
+    """Paginated list of authors with their aggregated analytics."""
+    total: int = Field(..., description="Total authors matching filter criteria")
+    limit: int = Field(..., description="Maximum records returned in this page")
+    offset: int = Field(..., description="Offset position")
+    items: List[AuthorSummary] = Field(default_factory=list, description="List of author summaries")
+
+
 class TimeSeriesPoint(BaseModel):
     """Single point in a time-series aggregation."""
     date: str = Field(..., description="Date string in YYYY-MM-DD format")
