@@ -5,3 +5,5 @@ export * from './useSentiment';
 export * from './useTopics';
 export * from './useNetwork';
 export * from './useTrends';
+export * from './useInsights';
+export * from './useInsightExplanation';

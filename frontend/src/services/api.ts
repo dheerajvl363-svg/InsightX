@@ -4,12 +4,16 @@
  */
 import type {
   AnalyticsQueryParams,
+  BatchInsightResult,
   BatchNetworkResult,
   BatchSentimentResult,
   BatchTrendResult,
   DashboardOverviewResponse,
   ErrorResponse,
   HealthResponse,
+  InsightExplanation,
+  InsightQueryParams,
+  IntelligenceAnalyzeRequest,
   PlatformComparisonResponse,
   PlatformInfo,
   PostListResponse,
@@ -157,5 +161,27 @@ export const apiService = {
   // Multi-Platform Comparison (GET /api/v1/analytics/platforms/compare)
   async getPlatformComparison(params: { start_date?: string; end_date?: string } = {}): Promise<PlatformComparisonResponse> {
     return request<PlatformComparisonResponse>(`/analytics/platforms/compare${buildQueryString(params as Record<string, unknown>)}`);
+  },
+
+  // Phase 7.2 Synthesized Intelligence API (GET /api/v1/insights, GET /api/v1/insights/{id}/explanation, POST /api/v1/analyze)
+  async getInsights(params: InsightQueryParams = {}): Promise<BatchInsightResult> {
+    const cleanParams: Record<string, unknown> = {};
+    if (params.platform && params.platform !== 'all') cleanParams.platform = params.platform;
+    if (params.min_confidence !== undefined) cleanParams.min_confidence = params.min_confidence;
+    if (params.max_insights !== undefined) cleanParams.max_insights = params.max_insights;
+    return request<BatchInsightResult>(`/insights${buildQueryString(cleanParams)}`);
+  },
+
+  async getInsightExplanation(insightId: string, platform?: string): Promise<InsightExplanation> {
+    const params: Record<string, unknown> = {};
+    if (platform && platform !== 'all') params.platform = platform;
+    return request<InsightExplanation>(`/insights/${encodeURIComponent(insightId)}/explanation${buildQueryString(params)}`);
+  },
+
+  async analyzeIntelligence(payload: IntelligenceAnalyzeRequest): Promise<BatchInsightResult> {
+    return request<BatchInsightResult>('/analyze', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 };

@@ -398,3 +398,43 @@ export interface IntelligenceAnalyzeRequest {
   min_confidence?: number;
   max_insights?: number;
 }
+
+export interface InsightQueryParams {
+  platform?: string;
+  min_confidence?: number;
+  max_insights?: number;
+}
+
+export interface InsightEvidenceReferences {
+  topic_id?: string | null;
+  topic_label?: string | null;
+  post_ids: number[];
+  external_post_ids: string[];
+  platforms: string[];
+  time_window?: TimeWindow | null;
+  key_metrics: Record<string, unknown>;
+}
+
+export interface InsightExplanation {
+  insight_id: string;
+  type: InsightType;
+  title: string;
+  summary: string;
+  severity: InsightSeverity;
+  confidence: number;
+  confidence_rationale: string;
+  severity_rationale: string;
+  facts: string[];
+  interpretation: string;
+  recommended_action?: string | null;
+  action_items: string[];
+  evidence_references: InsightEvidenceReferences;
+  generated_at: string;
+}
+
+export interface BatchExplanationResult {
+  total_explanations: number;
+  explanations: InsightExplanation[];
+  model: string;
+  generated_at: string;
+}

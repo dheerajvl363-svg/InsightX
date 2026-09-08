@@ -14,10 +14,14 @@ import {
 import { Card, StatCard, Badge, Button, ErrorBanner } from '../common';
 import { useOverview } from '../../hooks/useOverview';
 import { useTimeline } from '../../hooks/useTimeline';
+import { useInsights } from '../../hooks/useInsights';
+import type { InsightItem } from '../../types/api';
 import { TimelineVolumeChart } from './TimelineVolumeChart';
 import { PlatformDistributionChart } from './PlatformDistributionChart';
 import { SentimentAnalyticsChart } from './SentimentAnalyticsChart';
 import { TopicEmergenceChart } from './TopicEmergenceChart';
+import { IntelligenceFeedCard } from './IntelligenceFeedCard';
+import { InsightExplanationDrawer } from './InsightExplanationDrawer';
 
 const PLATFORMS = [
   { id: 'all', label: 'All Feeds' },
@@ -31,6 +35,7 @@ export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [selectedInterval, setSelectedInterval] = useState<'hour' | 'day' | 'week'>('day');
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
+  const [selectedInsight, setSelectedInsight] = useState<InsightItem | null>(null);
 
   const overviewParams = useMemo(() => {
     return selectedPlatform !== 'all' ? { platform: selectedPlatform } : {};
@@ -53,8 +58,15 @@ export const DashboardPage: React.FC = () => {
     refetch: refetchTimeline,
   } = useTimeline(selectedInterval, platformParam);
 
+  const {
+    data: insightsData,
+    loading: insightsLoading,
+    error: insightsError,
+    refetch: refetchInsights,
+  } = useInsights(overviewParams);
+
   const handleRefreshAll = async () => {
-    await Promise.all([refetchOverview(), refetchTimeline()]);
+    await Promise.all([refetchOverview(), refetchTimeline(), refetchInsights()]);
   };
 
   // Derived metrics from real overview payload
@@ -104,9 +116,9 @@ export const DashboardPage: React.FC = () => {
           <Button
             size="sm"
             variant="secondary"
-            icon={<RefreshCw size={14} className={overviewLoading || timelineLoading ? 'animate-spin' : ''} />}
+            icon={<RefreshCw size={14} className={overviewLoading || timelineLoading || insightsLoading ? 'animate-spin' : ''} />}
             onClick={handleRefreshAll}
-            disabled={overviewLoading || timelineLoading}
+            disabled={overviewLoading || timelineLoading || insightsLoading}
           >
             Sync Live Data
           </Button>
@@ -301,6 +313,16 @@ export const DashboardPage: React.FC = () => {
         />
       </div>
 
+      {/* Synthesized AI Intelligence & Alert Feed */}
+      <IntelligenceFeedCard
+        insightsData={insightsData}
+        loading={insightsLoading}
+        error={insightsError}
+        onRefresh={refetchInsights}
+        onSelectInsight={(insight) => setSelectedInsight(insight)}
+        selectedPlatform={platformParam}
+      />
+
       {/* Main Visualizations Grid */}
       <div
         style={{
@@ -480,6 +502,13 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {/* Deep-dive Explanation Drawer */}
+      <InsightExplanationDrawer
+        insight={selectedInsight}
+        platform={platformParam}
+        onClose={() => setSelectedInsight(null)}
+      />
     </div>
   );
 };
