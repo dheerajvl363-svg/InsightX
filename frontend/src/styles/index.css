@@ -189,6 +189,12 @@ html, body {
   }
 }
 
+@media (max-width: 900px) {
+  .network-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 @media (min-width: 769px) {
   .topbar-subtitle {
     display: block !important;

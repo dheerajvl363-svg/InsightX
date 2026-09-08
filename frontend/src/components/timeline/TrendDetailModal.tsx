@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   TrendingUp,
@@ -6,6 +7,7 @@ import {
   Sparkles,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowRight,
   Minus,
   Calendar,
   Layers,
@@ -20,6 +22,7 @@ interface TrendDetailModalProps {
 }
 
 export const TrendDetailModal: React.FC<TrendDetailModalProps> = ({ trend, onClose }) => {
+  const navigate = useNavigate();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -348,16 +351,29 @@ export const TrendDetailModal: React.FC<TrendDetailModalProps> = ({ trend, onClo
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer Actions */}
         <div
           style={{
             padding: '1rem 1.5rem',
             borderTop: '1px solid var(--border-subtle)',
             backgroundColor: 'var(--bg-surface)',
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
         >
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<ArrowRight size={14} />}
+            onClick={() => {
+              onClose();
+              navigate(`/posts?search=${encodeURIComponent(trend.topic_label)}`);
+            }}
+          >
+            Explore Evidence Posts
+          </Button>
+
           <Button size="sm" variant="secondary" onClick={onClose}>
             Close Inspector
           </Button>

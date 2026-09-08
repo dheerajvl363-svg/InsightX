@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   LayoutGrid,
@@ -21,15 +22,40 @@ import type { PostQueryParams, PostSummary } from '../../types/api';
 import { PostDetailDrawer } from './PostDetailDrawer';
 
 export const PostsPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Read initial params from URL if present
+  const initialSearch = searchParams.get('search') || '';
+  const initialPlatform = searchParams.get('platform') || 'all';
+  const initialAuthor = searchParams.get('author') || '';
+
   // Filter & Search state
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [debouncedQuery, setDebouncedQuery] = useState<string>('');
-  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>(initialSearch);
+  const [debouncedQuery, setDebouncedQuery] = useState<string>(initialSearch);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>(initialPlatform);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
-  const [authorFilter, setAuthorFilter] = useState<string>('');
+  const [authorFilter, setAuthorFilter] = useState<string>(initialAuthor);
   const [minLikesFilter, setMinLikesFilter] = useState<string>('');
   const [sortOption, setSortOption] = useState<string>('posted_at_desc');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(!!initialAuthor);
+
+  // Sync state if URL searchParams change externally (e.g. user navigation)
+  useEffect(() => {
+    const s = searchParams.get('search');
+    const p = searchParams.get('platform');
+    const a = searchParams.get('author');
+    if (s !== null && s !== searchQuery) {
+      setSearchQuery(s);
+      setDebouncedQuery(s);
+    }
+    if (p !== null && p !== selectedPlatform) {
+      setSelectedPlatform(p);
+    }
+    if (a !== null && a !== authorFilter) {
+      setAuthorFilter(a);
+      setShowAdvancedFilters(true);
+    }
+  }, [searchParams]);
 
   // View & Pagination state
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -105,6 +131,7 @@ export const PostsPage: React.FC = () => {
     setMinLikesFilter('');
     setSortOption('posted_at_desc');
     setPage(1);
+    setSearchParams({});
   };
 
   const platforms = [

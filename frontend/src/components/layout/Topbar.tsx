@@ -16,16 +16,20 @@ export interface TopbarProps {
 
 const routeTitles: Record<string, { title: string; subtitle: string }> = {
   '/dashboard': {
-    title: 'Executive Intelligence Overview',
-    subtitle: 'Cross-platform synthesis, engagement depth, and sentiment tracking',
+    title: 'Executive Intelligence Command Center',
+    subtitle: 'Cross-platform stream synthesis, engagement depth, and sentiment polarity index',
+  },
+  '/timeline': {
+    title: 'Chronological Timeline & Trend Radar',
+    subtitle: 'Multi-interval velocity curves, emerging narrative spikes, and cross-platform comparisons',
   },
   '/posts': {
-    title: 'Social Media Posts Explorer',
+    title: 'Social Stream Evidence Explorer',
     subtitle: 'Full-text search, multi-metric filtering, and granular post intelligence',
   },
   '/network': {
     title: 'Entity Co-occurrence Network Graph',
-    subtitle: 'Relational mapping between hashtags and mentions',
+    subtitle: 'Relational mapping between hashtags and user mentions across social streams',
   },
   '/health': {
     title: 'System Health & Pipeline Diagnostics',

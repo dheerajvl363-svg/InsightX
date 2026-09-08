@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ZoomIn,
   ZoomOut,
@@ -8,12 +9,14 @@ import {
   Sliders,
   Play,
   Pause,
+  ArrowRight,
 } from 'lucide-react';
 import { Card, Badge, Button, Skeleton, ErrorBanner } from '../common';
 import { useNetwork } from '../../hooks/useNetwork';
 import { Network } from 'vis-network';
 
 export const NetworkPage: React.FC = () => {
+  const navigate = useNavigate();
   const [physicsEnabled, setPhysicsEnabled] = useState(true);
   const [entityType, setEntityType] = useState<'all' | 'hashtag' | 'mention'>('all');
   const [minWeight, setMinWeight] = useState<number>(2);
@@ -393,6 +396,21 @@ export const NetworkPage: React.FC = () => {
                   <span style={{ color: 'var(--accent-purple)', fontSize: '0.75rem' }}>{selectedNode.id}</span>
                 </div>
               </div>
+
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<ArrowRight size={14} />}
+                onClick={() => {
+                  const param = selectedNode.node_type === 'author'
+                    ? `author=${encodeURIComponent(selectedNode.label)}`
+                    : `search=${encodeURIComponent(selectedNode.label)}`;
+                  navigate(`/posts?${param}`);
+                }}
+                style={{ width: '100%', marginTop: '0.5rem' }}
+              >
+                Explore Member Posts
+              </Button>
             </div>
           ) : (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem', fontSize: '0.85rem' }}>

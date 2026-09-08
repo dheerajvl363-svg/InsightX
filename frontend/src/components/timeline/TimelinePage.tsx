@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   RefreshCw,
   Sliders,
@@ -14,9 +15,24 @@ import { TrendDetailModal } from './TrendDetailModal';
 import { CrossPlatformComparisonChart } from './CrossPlatformComparisonChart';
 
 export const TimelinePage: React.FC = () => {
-  const [selectedInterval, setSelectedInterval] = useState<'hour' | 'day' | 'week'>('day');
-  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
+  const [searchParams] = useSearchParams();
+  const initialPlatform = searchParams.get('platform') || 'all';
+  const initialInterval = (searchParams.get('granularity') as 'hour' | 'day' | 'week') || 'day';
+
+  const [selectedInterval, setSelectedInterval] = useState<'hour' | 'day' | 'week'>(initialInterval);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>(initialPlatform);
   const [selectedTrend, setSelectedTrend] = useState<TopicTrendResult | null>(null);
+
+  useEffect(() => {
+    const p = searchParams.get('platform');
+    const g = searchParams.get('granularity') as 'hour' | 'day' | 'week' | null;
+    if (p !== null && p !== selectedPlatform) {
+      setSelectedPlatform(p);
+    }
+    if (g !== null && g !== selectedInterval) {
+      setSelectedInterval(g);
+    }
+  }, [searchParams]);
 
   // Real backend API hooks
   const platformParam = selectedPlatform !== 'all' ? selectedPlatform : undefined;

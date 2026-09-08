@@ -11,6 +11,7 @@ export interface StatCardProps {
   subtext?: string;
   loading?: boolean;
   style?: React.CSSProperties;
+  onClick?: () => void;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -23,9 +24,11 @@ export const StatCard: React.FC<StatCardProps> = ({
   subtext,
   loading = false,
   style = {},
+  onClick,
 }) => {
   return (
     <div
+      onClick={onClick}
       style={{
         backgroundColor: 'var(--bg-card)',
         border: '1px solid var(--border-subtle)',

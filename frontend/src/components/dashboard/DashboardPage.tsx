@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Database,
   TrendingUp,
   Sparkles,
   Layers,
   RefreshCw,
+  ArrowRight,
+  Share2,
+  Activity,
+  Compass,
 } from 'lucide-react';
 import { Card, StatCard, Badge, Button, ErrorBanner } from '../common';
 import { useOverview } from '../../hooks/useOverview';
@@ -14,8 +19,24 @@ import { PlatformDistributionChart } from './PlatformDistributionChart';
 import { SentimentAnalyticsChart } from './SentimentAnalyticsChart';
 import { TopicEmergenceChart } from './TopicEmergenceChart';
 
+const PLATFORMS = [
+  { id: 'all', label: 'All Feeds' },
+  { id: 'X', label: 'X (Twitter)' },
+  { id: 'Reddit', label: 'Reddit' },
+  { id: 'Telegram', label: 'Telegram' },
+  { id: 'YouTube', label: 'YouTube' },
+];
+
 export const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const [selectedInterval, setSelectedInterval] = useState<'hour' | 'day' | 'week'>('day');
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
+
+  const overviewParams = useMemo(() => {
+    return selectedPlatform !== 'all' ? { platform: selectedPlatform } : {};
+  }, [selectedPlatform]);
+
+  const platformParam = selectedPlatform !== 'all' ? selectedPlatform : undefined;
 
   // Real backend API hooks
   const {
@@ -23,14 +44,14 @@ export const DashboardPage: React.FC = () => {
     loading: overviewLoading,
     error: overviewError,
     refetch: refetchOverview,
-  } = useOverview();
+  } = useOverview(overviewParams);
 
   const {
     data: timeline,
     loading: timelineLoading,
     error: timelineError,
     refetch: refetchTimeline,
-  } = useTimeline(selectedInterval);
+  } = useTimeline(selectedInterval, platformParam);
 
   const handleRefreshAll = async () => {
     await Promise.all([refetchOverview(), refetchTimeline()]);
@@ -48,7 +69,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="page-container">
-      {/* View Header with Controls */}
+      {/* View Header with Global Context Controls */}
       <div
         style={{
           display: 'flex',
@@ -56,23 +77,25 @@ export const DashboardPage: React.FC = () => {
           alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: '1rem',
-          marginBottom: '2rem',
+          marginBottom: '1.5rem',
         }}
       >
         <div>
-          <h1
-            style={{
-              fontSize: '1.75rem',
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              letterSpacing: '-0.02em',
-              marginBottom: '0.35rem',
-            }}
-          >
-            Executive Intelligence Command Center
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.35rem' }}>
+            <h1
+              style={{
+                fontSize: '1.75rem',
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Executive Intelligence Command Center
+            </h1>
+            <Badge variant="cyan" size="sm">SIH PS 26152</Badge>
+          </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.925rem' }}>
-            Live multi-platform social stream intelligence synthesized from FastAPI backend endpoints.
+            Live multi-platform stream synthesis, engagement velocity, and emergent narrative tracking.
           </p>
         </div>
 
@@ -91,6 +114,104 @@ export const DashboardPage: React.FC = () => {
           <Badge variant={overviewError ? 'negative' : 'cyan'} size="md">
             {overviewError ? 'Sync Error' : 'Live /api/v1'}
           </Badge>
+        </div>
+      </div>
+
+      {/* Global Platform Context Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          padding: '0.75rem 1rem',
+          backgroundColor: 'var(--bg-secondary)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-subtle)',
+          marginBottom: '1.75rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Active Stream Filter:
+          </span>
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+            {PLATFORMS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedPlatform(p.id)}
+                style={{
+                  backgroundColor: selectedPlatform === p.id ? 'var(--accent-cyan-bg)' : 'var(--bg-tertiary)',
+                  color: selectedPlatform === p.id ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                  border: `1px solid ${selectedPlatform === p.id ? 'rgba(0, 210, 255, 0.4)' : 'var(--border-subtle)'}`,
+                  borderRadius: 'var(--radius-full)',
+                  padding: '0.25rem 0.75rem',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all var(--transition-fast)',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick Intel Navigator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick Jump:</span>
+          <button
+            onClick={() => navigate(selectedPlatform !== 'all' ? `/posts?platform=${selectedPlatform}` : '/posts')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--accent-cyan)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.2rem',
+            }}
+          >
+            Posts <ArrowRight size={12} />
+          </button>
+          <span style={{ color: 'var(--border-muted)' }}>•</span>
+          <button
+            onClick={() => navigate(selectedPlatform !== 'all' ? `/timeline?platform=${selectedPlatform}` : '/timeline')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--accent-purple)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.2rem',
+            }}
+          >
+            Timeline & Trends <ArrowRight size={12} />
+          </button>
+          <span style={{ color: 'var(--border-muted)' }}>•</span>
+          <button
+            onClick={() => navigate('/network')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--sentiment-pos)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.2rem',
+            }}
+          >
+            Network <ArrowRight size={12} />
+          </button>
         </div>
       </div>
 
@@ -114,7 +235,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Stat Cards Grid */}
+      {/* KPI Stat Cards Grid with Deep Navigation Affordances */}
       <div
         style={{
           display: 'grid',
@@ -130,8 +251,10 @@ export const DashboardPage: React.FC = () => {
           icon={<Database size={20} />}
           iconBg="rgba(0, 210, 255, 0.12)"
           iconColor="var(--accent-cyan)"
-          subtext={`Evaluated across ${platforms.length} platform(s)`}
-          badge={<Badge variant="cyan" size="sm">GET /posts</Badge>}
+          subtext={`Click to inspect evidence in Posts Explorer`}
+          badge={<Badge variant="cyan" size="sm">Explore &rarr;</Badge>}
+          onClick={() => navigate(selectedPlatform !== 'all' ? `/posts?platform=${selectedPlatform}` : '/posts')}
+          style={{ cursor: 'pointer', transition: 'transform var(--transition-fast)' }}
         />
 
         <StatCard
@@ -161,7 +284,9 @@ export const DashboardPage: React.FC = () => {
           iconBg="rgba(139, 92, 246, 0.12)"
           iconColor="var(--accent-purple)"
           subtext={topics[0] ? `Top: ${topTopicLabel}` : 'Keyword NLP analysis'}
-          badge={<Badge variant="primary" size="sm">Phase 3.4</Badge>}
+          badge={<Badge variant="primary" size="sm">Trends &rarr;</Badge>}
+          onClick={() => navigate('/timeline')}
+          style={{ cursor: 'pointer', transition: 'transform var(--transition-fast)' }}
         />
 
         <StatCard
@@ -189,6 +314,25 @@ export const DashboardPage: React.FC = () => {
         <Card
           title="Chronological Post Activity & Volume Velocity"
           subtitle={`Granularity: ${selectedInterval.toUpperCase()} — Live stream telemetry`}
+          headerAction={
+            <button
+              onClick={() => navigate(selectedPlatform !== 'all' ? `/timeline?platform=${selectedPlatform}` : '/timeline')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--accent-cyan)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              <span>Dedicated View</span>
+              <ArrowRight size={13} />
+            </button>
+          }
           style={{ minHeight: '380px' }}
         >
           <TimelineVolumeChart
@@ -203,6 +347,25 @@ export const DashboardPage: React.FC = () => {
         <Card
           title="Platform Ingestion Distribution"
           subtitle={`Connected networks: ${platforms.length}`}
+          headerAction={
+            <button
+              onClick={() => navigate('/posts')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--accent-cyan)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              <span>Explore Posts</span>
+              <ArrowRight size={13} />
+            </button>
+          }
           style={{ minHeight: '380px' }}
         >
           <PlatformDistributionChart
@@ -219,6 +382,7 @@ export const DashboardPage: React.FC = () => {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
           gap: '1.5rem',
+          marginBottom: '2rem',
         }}
       >
         {/* Sentiment Polarity Breakdown Card */}
@@ -226,11 +390,24 @@ export const DashboardPage: React.FC = () => {
           title="Net Sentiment & Polarity Index"
           subtitle={`Evaluated posts: ${sentiment?.total_analyzed ?? 0}`}
           footer={
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               <span>Endpoint: GET /api/v1/analytics/sentiment</span>
-              <span style={{ color: avgScore >= 0.05 ? 'var(--sentiment-pos)' : avgScore <= -0.05 ? 'var(--sentiment-neg)' : 'var(--sentiment-neu)', fontWeight: 600 }}>
-                Average: {avgScore.toFixed(2)}
-              </span>
+              <button
+                onClick={() => navigate('/posts')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-cyan)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.2rem',
+                }}
+              >
+                Inspect Posts &rarr;
+              </button>
             </div>
           }
         >
@@ -245,9 +422,24 @@ export const DashboardPage: React.FC = () => {
           title="Top Thematic Topics & Emergent Narratives"
           subtitle={`Identified clusters: ${topics.length}`}
           footer={
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               <span>Endpoint: GET /api/v1/analytics/topics</span>
-              <span style={{ color: 'var(--accent-cyan)' }}>Ranked by Post Count</span>
+              <button
+                onClick={() => navigate('/timeline')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-purple)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.2rem',
+                }}
+              >
+                View Trends Radar &rarr;
+              </button>
             </div>
           }
         >
@@ -257,6 +449,37 @@ export const DashboardPage: React.FC = () => {
           />
         </Card>
       </div>
+
+      {/* SIH Story Navigator Footer Card */}
+      <Card style={{ padding: '1.25rem 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div style={{ padding: '0.65rem', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--accent-cyan-bg)', color: 'var(--accent-cyan)' }}>
+              <Compass size={22} />
+            </div>
+            <div>
+              <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Intelligence Workflow Navigation
+              </h4>
+              <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                Follow the analytical trail from Executive Overview &rarr; Evidence Explorer &rarr; Timeline & Trends &rarr; Entity Network.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+            <Button size="sm" variant="secondary" icon={<Share2 size={14} />} onClick={() => navigate('/network')}>
+              Entity Network
+            </Button>
+            <Button size="sm" variant="secondary" icon={<Activity size={14} />} onClick={() => navigate('/health')}>
+              System Health
+            </Button>
+            <Button size="sm" variant="primary" icon={<ArrowRight size={14} />} onClick={() => navigate('/posts')}>
+              Explore Posts
+            </Button>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 };
