@@ -4,11 +4,11 @@
 
 Phase 4 establishes the high-level **Analytics Engine** for **InsightX**, synthesizing raw ingestion (Phase 2) and NLP signals (Phase 3) into holistic, multi-dimensional public intelligence for **Smart India Hackathon 2026 Problem Statement 26152 (Social Media Analytics)**.
 
-While Phase 3 provides atomic NLP inferences (sentiment, emotion, topic clusters, demographics), Phase 4 introduces **dynamic synthesis across time, engagement depth, virality mechanics, sentiment distributions, trend momentum, and evolving narrative lifecycles**.
+While Phase 3 provides atomic NLP inferences (sentiment, emotion, topic clusters, demographics), Phase 4 introduces **dynamic synthesis across time, engagement depth, virality mechanics, sentiment distributions, trend momentum, temporal acceleration, and evolving narrative lifecycles**.
 
 ---
 
-## 2. Analytics Engine Architecture (Phase 4.1 – 4.5)
+## 2. Analytics Engine Architecture (Phase 4.1 – 4.6)
 
 The Analytics Engine is structured into decoupled, modular components orchestrated by `AnalyticsEngineService`:
 
@@ -22,18 +22,18 @@ The Analytics Engine is structured into decoupled, modular components orchestrat
 ┌──────────────┐             ┌──────────────┐┌──────────────┐┌──────────────┐             ┌──────────────┐
 │  Engagement  │             │ Time-Series  ││  Sentiment   ││    Trend     │             │  Narrative   │
 │    Engine    │             │   Dynamics   ││    Engine    ││  Detection   │             │   Dynamics   │
-│ (Phase 4.2)  │             │ (Phase 4.1)  ││ (Phase 4.3)  ││ (Phase 4.4)  │             │ (Phase 4.5)  │
+│ (Phase 4.2)  │             │ (Phase 4.6)  ││ (Phase 4.3)  ││ (Phase 4.4)  │             │ (Phase 4.5)  │
 └──────────────┘             └──────────────┘└──────────────┘└──────────────┘             └──────────────┘
        │                            │               │               │                            │
        │ • Weighted score           │ • Bucketing   │ • Polarity    │ • Mining/Spikes            │ • Lifecycle stages
-       │ • Virality & Amplification │ • Moving avg  │ • Net score   │ • Momentum score           │ • Velocity & accel.
-       │ • Discussion depth         │ • Anomaly z   │ • Dist %      │ • Direction classification │ • Sentiment drift
-       │ • Score distribution       │ • Trends      │ • Platform    │ • Platform summaries       │ • Impact score
-       │ • Platform benchmarking    └───────┬───────┴───────┬───────┴────────────┬───────────────┤ • Multi-platform
-       └────────────────────────────────────┴───────────────┤                    │               └──────┬───────┘
-                                                            ↓                    ↓                      │
-                                         ┌──────────────────────────────────────────────┐               │
-                                         │            AnalyticsEngineService            │◄──────────────┘
+       │ • Virality & Amplification │ • Smoothing   │ • Net score   │ • Momentum score           │ • Velocity & accel.
+       │ • Discussion depth         │ • Velocity    │ • Dist %      │ • Direction classification │ • Sentiment drift
+       │ • Score distribution       │ • Anomaly z   │ • Platform    │ • Platform summaries       │ • Impact score
+       │ • Platform benchmarking    │ • Trajectory  └───────┬───────┴────────────┬───────────────┤ • Multi-platform
+       └────────────────────────────┼───────────────────────┤                    │               └──────┬───────┘
+                                    │                       ↓                    ↓                      │
+                                    │    ┌──────────────────────────────────────────────┐               │
+                                    └───►│            AnalyticsEngineService            │◄──────────────┘
                                          │       (Orchestrator & Insights Engine)       │
                                          └──────────────────────┬───────────────────────┘
                                                                 ↓
@@ -142,13 +142,36 @@ Narratives represent cohesive conversational themes evolving across time and pla
 
 ---
 
-### 3.5 Time-Series & Temporal Dynamics (Phase 4.1)
+### 3.5 Advanced Time-Series & Temporal Dynamics (Phase 4.6)
+
 - **Interval Granularities**: `hour`, `day`, `week` (floored to UTC boundaries).
-- **Rolling Moving Average ($\text{RMA}_k$)**:
-  $$\text{RMA}_k(i) = \frac{1}{\min(i+1, k)} \sum_{j=\max(0, i-k+1)}^{i} \text{metric}(j)$$
-- **Anomaly / Spike Z-Score**:
-  $$z_i = \frac{volume_i - \mu_{volume}}{\sigma_{volume}}$$
-  An interval is flagged as an anomaly when $z_i \ge \text{threshold}$ (default: $2.0\sigma$).
+- **Temporal Moving Average Smoothing ($\text{SMA}_k$)**:
+  $$\text{SMA}_k(i) = \frac{1}{\min(i+1, k)} \sum_{j=\max(0, i-k+1)}^{i} \text{metric}(j)$$
+  Smoothes volume (`rolling_post_count_avg`), engagement (`rolling_engagement_avg`), and sentiment polarity (`rolling_sentiment_avg`) to reduce high-frequency sampling jitter.
+- **Interval Velocity ($v_i$) & Acceleration ($a_i$)**:
+  $$v_i = \text{metric}_i - \text{metric}_{i-1}, \quad a_i = v_i - v_{i-1}$$
+  Calculated across consecutive discrete interval buckets for both volume and engagement.
+- **Baseline vs. Current Window Analysis**:
+  - Baseline Mean ($\overline{M}_{base}$) vs Current Mean ($\overline{M}_{curr}$).
+  - InsightX Normalized Growth Rate ($\text{GR}_{\%}$):
+    $$\text{GR}_{\%} = \frac{\overline{M}_{curr} - \overline{M}_{base}}{\max(|\overline{M}_{base}|, 1.0)} \times 100$$
+    *(Documented as an InsightX analytical normalization heuristic)*.
+- **Multi-Tiered Anomaly & Spike Detection**:
+  Calculates standard deviation $z$-score relative to temporal distribution:
+  $$z_i = \frac{\text{metric}_i - \mu}{\sigma}$$
+  - `elevated`: $1.5 \le z_i < 2.0$
+  - `anomalous`: $2.0 \le z_i < 3.0$
+  - `extreme_spike`: $z_i \ge 3.0$
+- **Cross-Platform Timeline Analysis**:
+  Identifies platform chronology, earliest active platform, platform peak volumes/engagements, and platform volume share %.
+- **Short-Term Trajectory Signal**:
+  Deterministic rule-based classification based on trailing interval velocities and accelerations:
+  - `rapidly_rising`: Trailing velocity $\ge 3.0$ and acceleration $> 0$.
+  - `rising`: Trailing velocity $> 0$.
+  - `rapidly_declining`: Trailing velocity $\le -3.0$ and acceleration $< 0$.
+  - `declining`: Trailing velocity $< 0$.
+  - `stable`: Velocity $\approx 0$.
+  - `insufficient_data`: Sample size $< 2$ intervals.
 
 ---
 
@@ -177,6 +200,13 @@ Narratives represent cohesive conversational themes evolving across time and pla
 - `NarrativeTrajectoryMetrics`: Narrative volume velocity, acceleration, engagement velocity, and sentiment drift.
 - `NarrativeIntelligence`: Multi-dimensional narrative intelligence object combining topic identifiers, lifecycle stage, trajectory, sentiment distributions, engagement metrics, impact score, platform distribution, and representative post IDs.
 - `DetailedNarrativeReport`: Comprehensive Phase 4.5 narrative analysis report with dominant, fastest-growing, highest-engagement, and cross-platform narrative collections.
+- `TimeSeriesBucket`: Discrete temporal bucket with moving averages, velocity, acceleration, sentiment breakdown, platform distributions, and anomaly severity tiers.
+- `TemporalBaselineComparison`: Comparative analysis comparing baseline historical period against current active observation window.
+- `TemporalAnomalyDetail`: Detailed diagnostic entry for detected temporal spikes and anomalies.
+- `PlatformTemporalSeries`: Platform-specific temporal volume, peak intervals, and growth rates.
+- `CrossPlatformTemporalReport`: Cross-platform temporal presence, earliest platform, and peak volume/engagement platform leaders.
+- `TemporalTrajectorySignal`: Heuristic rule-based short-term signal trajectory indicator with explainable rationale.
+- `TemporalDynamicsReport`: Full Phase 4.6 temporal dynamics report combining buckets, baseline comparisons, detected anomalies, platform chronologies, trajectory signals, and temporal insights.
 - `Phase4AnalyticsReport`: Comprehensive unified analytical result combining all dimensions with actionable textual summary insights.
 
 ---
@@ -203,42 +233,43 @@ report = service.analyze(
 print(f"Evaluated posts: {report.total_posts_evaluated}")
 print(f"Weighted Engagement: {report.engagement_analytics.weighted_engagement_score}")
 
-# Inspect Phase 4.3 Sentiment Analytics
-if report.detailed_sentiment:
-    dist = report.detailed_sentiment.overall_distribution
-    print(f"Net Sentiment Score: {dist.net_sentiment_score:+.2f}")
-    print(f"Dominant Sentiment: {dist.dominant_sentiment}")
+# Inspect Phase 4.6 Advanced Time-Series Analytics
+td = report.temporal_dynamics
+print(f"Total Discrete Buckets: {td.total_buckets} ({td.interval_unit.value} interval)")
+if td.baseline_comparison:
+    print(f"Volume Growth vs Baseline: {td.baseline_comparison.volume_growth_rate_pct:+.1f}% ({td.baseline_comparison.direction})")
+    print(f"Engagement Growth vs Baseline: {td.baseline_comparison.engagement_growth_rate_pct:+.1f}%")
 
-# Inspect Phase 4.4 Trend Analytics
-if report.detailed_trends:
-    print(f"Total Trends Evaluated: {report.detailed_trends.total_trends_evaluated}")
-    for trend in report.detailed_trends.ranked_trends[:3]:
-        print(f"[{trend.item_type}] {trend.name}: Score={trend.momentum.momentum_score:.2f} ({trend.momentum.direction})")
+if td.trajectory_signal:
+    print(f"Near-Term Trajectory: {td.trajectory_signal.classification.upper()} ({td.trajectory_signal.explanation})")
 
-# Inspect Phase 4.5 Narrative Analytics
-if report.detailed_narratives:
-    dom = report.detailed_narratives.dominant_narrative
-    if dom:
-        print(f"Dominant Narrative: {dom.label} (Impact Score: {dom.narrative_impact_score:.1f}, Stage: {dom.lifecycle_stage.value})")
-        print(f"Sentiment Drift: {dom.trajectory.sentiment_drift:+.2f}, Net Sentiment: {dom.net_sentiment_score:+.2f}")
-        for plat, p_dist in dom.platform_breakdown.items():
-            print(f" - [{plat}] {p_dist.post_count} posts ({p_dist.share_percentage:.1f}%)")
+if td.detected_anomalies:
+    print(f"Detected Anomalies/Spikes: {len(td.detected_anomalies)}")
+    for a in td.detected_anomalies:
+        print(f" - [{a.severity.upper()}] {a.affected_metric}: z={a.z_score:.2f} ({a.description})")
+
+if td.platform_temporal_comparison:
+    cp = td.platform_temporal_comparison
+    print(f"Earliest Platform: {cp.earliest_platform}, Peak Volume Platform: {cp.peak_volume_platform}")
 ```
 
 ---
 
 ## 6. Assumptions, Limitations & Future Extensions
 
-### Baseline Assumptions:
-- Narrative clustering in baseline mode uses explicit topic associations (from Phase 3.4 TopicEngine), topic annotations, hashtags, or fallback rule-based term extraction.
-- Deterministic lifecycle rules model volume velocity and acceleration relative to a temporal midpoint split or explicit reference time.
+### Current InsightX Capability (Deterministic Statistical & Heuristic Temporal Analytics):
+- **Interval Aggregation**: Deterministic flooring to UTC boundaries (hour, day, week).
+- **Smoothing**: Simple Moving Average ($\text{SMA}_k$) over configurable sliding windows.
+- **Velocity & Acceleration**: Direct discrete difference heuristics ($v = M_t - M_{t-1}, a = v_t - v_{t-1}$).
+- **Anomaly Detection**: Standard deviation $z$-score thresholding and moving-average deviation categorization.
+- **Trajectory Signal**: Rule-based heuristic classification based on trailing velocity and acceleration; explicitly **not** an autoregressive or predictive ML model.
 
 ### Known Limitations:
-- Simple keyword or hashtag grouping does not capture deep semantic nuance or polysemous conversational context.
-- Without dense neural embeddings, sub-narratives with disparate phrasing may be clustered into separate baseline buckets.
+- The trajectory signal does not perform complex multi-step time-series forecasting (e.g. ARIMA, Prophet, LSTM, or Transformer-based temporal forecasting).
+- Anomaly detection assumes approximately unimodal baseline distributions and does not account for complex seasonal calendar effects (e.g. holiday patterns).
 
 ### Future Extensions:
-- `BaseNarrativeEngine` is designed as an extensible abstract interface. In future phases, dense vector embeddings (e.g. sentence transformers, HDBSCAN clustering) can be dropped in without changing downstream consumers or the `Phase4AnalyticsReport` structure.
+- `BaseTimeSeriesEngine` interface is modular and decoupled from underlying algorithms, enabling future integration of probabilistic ML forecasting (e.g. NeuralProphet, Temporal Fusion Transformers) and unsupervised isolation forest anomaly models without altering downstream interfaces or `Phase4AnalyticsReport` schemas.
 
 ---
 
@@ -258,8 +289,15 @@ Phase 4 tests cover:
 - Narrative lifecycle classifications (`emerging`, `accelerating`, `peak`, `sustained`, `decaying`, `dormant`).
 - Narrative impact scoring and ranking.
 - Cross-platform narrative distributions and representative post ID extraction.
-- Full `AnalyticsEngineService` pipeline execution and summary insight generation.
+- Hourly, daily, and weekly discrete temporal bucketing and timestamp parsing.
+- Moving-average smoothing across volume, engagement, and sentiment.
+- Temporal velocity and acceleration calculations.
+- Baseline vs. current comparison with growth rate percentage heuristics.
+- Multi-tiered anomaly detection (`elevated`, `anomalous`, `extreme_spike`) and zero-variance robustness.
+- Cross-platform temporal timeline analysis and chronology tracking.
+- Deterministic heuristic trajectory classification (`rapidly_rising`, `rising`, `stable`, `declining`, `rapidly_declining`, `insufficient_data`).
+- Temporal insight generation and full `AnalyticsEngineService` pipeline execution.
 
 ### Verification Status:
-- **Phase 4 Unit Tests**: 54 / 54 passing across `test_analytics_engine.py`, `test_trend_analytics_engine.py`, and `test_narrative_analytics_engine.py`.
-- **Repository Total**: 351 / 351 passing (0 failures, 0 errors).
+- **Phase 4 Unit Tests**: 66 / 66 passing across `test_analytics_engine.py`, `test_trend_analytics_engine.py`, `test_narrative_analytics_engine.py`, and `test_time_series_analytics_engine.py`.
+- **Repository Total**: 363 / 363 passing (0 failures, 0 errors).

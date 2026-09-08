@@ -66,8 +66,8 @@ from app.schemas.trend import (
     TopicTrendResult,
     TrendDirection,
 )
-
 from app.schemas.analytics_engine import (
+    CrossPlatformTemporalReport,
     DetailedEngagementReport,
     DetailedNarrativeReport,
     DetailedSentimentReport,
@@ -84,12 +84,16 @@ from app.schemas.analytics_engine import (
     PlatformComparativeReport,
     PlatformEngagementComparison,
     PlatformSentimentSummary,
+    PlatformTemporalSeries,
     PlatformTrendSummary,
     PostEngagementProfile,
     PostSentimentProfile,
     SentimentDistributionSummary,
+    TemporalAnomalyDetail,
+    TemporalBaselineComparison,
     TemporalDynamicsReport,
     TemporalSentimentPoint,
+    TemporalTrajectorySignal,
     TimeSeriesBucket,
     TrendItemProfile,
     TrendMomentumMetrics,
@@ -173,4 +177,9 @@ __all__ = [
     "TrendItemProfile",
     "PlatformTrendSummary",
     "DetailedTrendReport",
+    "TemporalBaselineComparison",
+    "TemporalAnomalyDetail",
+    "PlatformTemporalSeries",
+    "CrossPlatformTemporalReport",
+    "TemporalTrajectorySignal",
 ]

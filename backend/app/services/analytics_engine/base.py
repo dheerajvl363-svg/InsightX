@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from app.schemas.analytics_engine import (
+    CrossPlatformTemporalReport,
     DetailedEngagementReport,
     DetailedNarrativeReport,
     DetailedSentimentReport,
@@ -18,12 +19,16 @@ from app.schemas.analytics_engine import (
     PlatformComparativeReport,
     PlatformEngagementComparison,
     PlatformSentimentSummary,
+    PlatformTemporalSeries,
     PlatformTrendSummary,
     PostEngagementProfile,
     PostSentimentProfile,
     SentimentDistributionSummary,
+    TemporalAnomalyDetail,
+    TemporalBaselineComparison,
     TemporalDynamicsReport,
     TemporalSentimentPoint,
+    TemporalTrajectorySignal,
     TimeSeriesBucket,
     TrendItemProfile,
     TrendMomentumMetrics,
@@ -79,8 +84,44 @@ class BaseTimeSeriesEngine(ABC):
         anomaly_threshold_z: float = 2.0,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
+        split_ratio: float = 0.5,
     ) -> TemporalDynamicsReport:
-        """Generate discrete temporal buckets with rolling statistics and peak/anomaly detection."""
+        """Generate discrete temporal buckets with rolling statistics, peak/anomaly detection, and trajectory."""
+        pass
+
+    @abstractmethod
+    def compare_baseline_vs_current(
+        self,
+        buckets: List[TimeSeriesBucket],
+        split_ratio: float = 0.5,
+    ) -> TemporalBaselineComparison:
+        """Calculate historical baseline vs. current active window metrics and growth rates."""
+        pass
+
+    @abstractmethod
+    def detect_anomalies(
+        self,
+        buckets: List[TimeSeriesBucket],
+        anomaly_threshold_z: float = 2.0,
+    ) -> List[TemporalAnomalyDetail]:
+        """Detect and classify multi-tiered temporal anomalies and spikes."""
+        pass
+
+    @abstractmethod
+    def evaluate_trajectory(
+        self,
+        buckets: List[TimeSeriesBucket],
+    ) -> TemporalTrajectorySignal:
+        """Evaluate deterministic short-term trajectory signals based on trailing intervals."""
+        pass
+
+    @abstractmethod
+    def compare_platforms_temporal(
+        self,
+        posts: List[Any],
+        interval_unit: IntervalUnit = IntervalUnit.HOUR,
+    ) -> CrossPlatformTemporalReport:
+        """Compare temporal timeline dynamics across publishing platforms."""
         pass
 
 

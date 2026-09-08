@@ -43,10 +43,15 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
         self.engagement_engine = engagement_engine or EngagementEngine()
         self.sentiment_engine = sentiment_engine or SentimentAnalyticsEngine()
         self.time_series_engine = (
-            time_series_engine or TimeSeriesDynamicsEngine(engagement_engine=self.engagement_engine)
+            time_series_engine
+            or TimeSeriesDynamicsEngine(
+                engagement_engine=self.engagement_engine,
+                sentiment_engine=self.sentiment_engine,
+            )
         )
         self.narrative_engine = (
-            narrative_engine or NarrativeDynamicsEngine(
+            narrative_engine
+            or NarrativeDynamicsEngine(
                 engagement_engine=self.engagement_engine,
                 sentiment_engine=self.sentiment_engine,
             )
@@ -154,7 +159,12 @@ class AnalyticsEngineService(BaseAnalyticsEngine):
                 f"generating {temporal.peak_bucket_engagement:,.1f} weighted engagement."
             )
 
-        # Anomaly insight
+        # Temporal trajectory & anomaly insights (Phase 4.6)
+        if temporal.trajectory_signal and temporal.trajectory_signal.classification != "insufficient_data":
+            insights.append(
+                f"Near-term signal trajectory is {temporal.trajectory_signal.classification.replace('_', ' ').upper()} ({temporal.trajectory_signal.explanation})."
+            )
+
         if temporal.anomalous_intervals_count > 0:
             insights.append(
                 f"Detected {temporal.anomalous_intervals_count} statistically significant activity spike(s) "

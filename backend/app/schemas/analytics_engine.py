@@ -63,6 +63,7 @@ class TimeSeriesBucket(BaseModel):
     bucket_end: datetime = Field(..., description="End timestamp of the bucket window (exclusive, UTC)")
     post_count: int = Field(default=0, ge=0, description="Number of posts published in interval")
     engagement_score: float = Field(default=0.0, ge=0.0, description="Weighted engagement score in interval")
+    avg_post_engagement: float = Field(default=0.0, ge=0.0, description="Average engagement per post in interval")
     total_likes: int = Field(default=0, ge=0, description="Likes within interval")
     total_comments: int = Field(default=0, ge=0, description="Comments within interval")
     total_shares: int = Field(default=0, ge=0, description="Shares within interval")
@@ -71,6 +72,13 @@ class TimeSeriesBucket(BaseModel):
         default=None,
         description="Mean sentiment polarity score [-1.0, 1.0] for posts in interval"
     )
+    net_sentiment_score: Optional[float] = Field(
+        default=None,
+        description="Net sentiment score (pos - neg) / total in interval"
+    )
+    positive_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Positive sentiment % in interval")
+    negative_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Negative sentiment % in interval")
+    neutral_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Neutral sentiment % in interval")
     dominant_sentiment: Optional[str] = Field(default=None, description="Most frequent sentiment in interval")
     dominant_emotion: Optional[str] = Field(default=None, description="Most frequent emotion in interval")
     rolling_post_count_avg: Optional[float] = Field(
@@ -81,6 +89,22 @@ class TimeSeriesBucket(BaseModel):
         default=None,
         description="k-period rolling average of weighted engagement"
     )
+    rolling_sentiment_avg: Optional[float] = Field(
+        default=None,
+        description="k-period rolling average of mean sentiment polarity"
+    )
+    velocity: Optional[float] = Field(
+        default=None,
+        description="Volume rate of change compared to immediate previous interval: post_count_curr - post_count_prev"
+    )
+    acceleration: Optional[float] = Field(
+        default=None,
+        description="Rate of velocity change between consecutive intervals"
+    )
+    engagement_velocity: Optional[float] = Field(
+        default=None,
+        description="Engagement rate of change compared to immediate previous interval"
+    )
     is_anomaly: bool = Field(
         default=False,
         description="Flag indicating if volume or engagement is a statistical anomaly"
@@ -89,6 +113,106 @@ class TimeSeriesBucket(BaseModel):
         default=0.0,
         description="Standard deviation z-score relative to baseline distribution"
     )
+    anomaly_severity: Optional[str] = Field(
+        default="normal",
+        description="Anomaly classification tier: normal, elevated, anomalous, extreme_spike"
+    )
+    anomaly_metric: Optional[str] = Field(
+        default=None,
+        description="Primary metric responsible for anomaly: volume, engagement, or combined"
+    )
+    platform_distribution: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Distribution of post count across platforms in this interval"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TemporalBaselineComparison(BaseModel):
+    """Comparative analysis between baseline historical window and current active period."""
+    baseline_period_buckets: int = Field(default=0, ge=0, description="Number of baseline interval buckets")
+    current_period_buckets: int = Field(default=0, ge=0, description="Number of current active interval buckets")
+    baseline_mean_volume: float = Field(default=0.0, ge=0.0, description="Mean posts per bucket in baseline")
+    current_mean_volume: float = Field(default=0.0, ge=0.0, description="Mean posts per bucket in current period")
+    volume_absolute_change: float = Field(default=0.0, description="Absolute change in mean volume: current - baseline")
+    volume_growth_rate_pct: float = Field(
+        default=0.0,
+        description="InsightX normalized volume growth rate: ((current - baseline) / max(abs(baseline), 1.0)) * 100"
+    )
+    baseline_mean_engagement: float = Field(default=0.0, ge=0.0, description="Mean engagement per bucket in baseline")
+    current_mean_engagement: float = Field(default=0.0, ge=0.0, description="Mean engagement per bucket in current period")
+    engagement_growth_rate_pct: float = Field(
+        default=0.0,
+        description="InsightX normalized engagement growth rate: ((current - baseline) / max(abs(baseline), 1.0)) * 100"
+    )
+    baseline_mean_sentiment: Optional[float] = Field(default=None, description="Mean sentiment polarity in baseline")
+    current_mean_sentiment: Optional[float] = Field(default=None, description="Mean sentiment polarity in current period")
+    sentiment_shift: Optional[float] = Field(default=None, description="Shift in mean polarity: current - baseline")
+    direction: str = Field(default="stable", description="Overall temporal direction: rising, declining, or stable")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TemporalAnomalyDetail(BaseModel):
+    """Itemized detail of an anomalous temporal interval."""
+    bucket_start: datetime = Field(..., description="Timestamp of anomalous bucket window start (UTC)")
+    bucket_end: datetime = Field(..., description="Timestamp of anomalous bucket window end (UTC)")
+    z_score: float = Field(..., description="Standard deviation z-score")
+    moving_avg_deviation: float = Field(default=0.0, description="Deviation from k-period moving average")
+    severity: str = Field(..., description="Severity tier: elevated, anomalous, extreme_spike")
+    affected_metric: str = Field(..., description="Affected metric: volume, engagement, or combined")
+    actual_value: float = Field(..., description="Actual observed metric value in bucket")
+    expected_baseline: float = Field(..., description="Expected baseline/moving average value")
+    description: str = Field(..., description="Explainable diagnostic description of anomaly")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlatformTemporalSeries(BaseModel):
+    """Platform-specific temporal presence and activity distribution."""
+    platform: str = Field(..., description="Platform identifier")
+    total_posts: int = Field(default=0, ge=0, description="Total posts on platform")
+    total_engagement: float = Field(default=0.0, ge=0.0, description="Total engagement on platform")
+    earliest_activity: Optional[datetime] = Field(default=None, description="Earliest post timestamp on platform")
+    peak_bucket_start: Optional[datetime] = Field(default=None, description="Timestamp of platform's peak interval")
+    peak_volume: int = Field(default=0, ge=0, description="Peak interval post volume on platform")
+    peak_engagement: float = Field(default=0.0, ge=0.0, description="Peak interval engagement on platform")
+    growth_rate_pct: float = Field(default=0.0, description="Platform-specific volume growth rate %")
+    volume_share_pct: float = Field(default=0.0, ge=0.0, le=100.0, description="Platform percentage share of total volume")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CrossPlatformTemporalReport(BaseModel):
+    """Cross-platform temporal synchronization and leadership report."""
+    platforms: Dict[str, PlatformTemporalSeries] = Field(
+        default_factory=dict,
+        description="Per-platform temporal series summaries"
+    )
+    earliest_platform: Optional[str] = Field(default=None, description="Platform with earliest observed activity")
+    peak_volume_platform: Optional[str] = Field(default=None, description="Platform reaching highest peak interval volume")
+    peak_engagement_platform: Optional[str] = Field(default=None, description="Platform reaching highest peak interval engagement")
+    highest_growth_platform: Optional[str] = Field(default=None, description="Platform with highest velocity/growth rate")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TemporalTrajectorySignal(BaseModel):
+    """Deterministic rule-based short-term trajectory indicator (heuristic, not predictive ML)."""
+    classification: str = Field(
+        ...,
+        description="Trajectory classification: rapidly_rising, rising, stable, declining, rapidly_declining, insufficient_data"
+    )
+    recent_velocity: float = Field(default=0.0, description="Recent volume velocity across trailing intervals")
+    recent_acceleration: float = Field(default=0.0, description="Recent volume acceleration")
+    confidence_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Heuristic observation confidence based on interval sample size"
+    )
+    explanation: str = Field(..., description="Explainable deterministic trajectory rationale")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,6 +228,26 @@ class TemporalDynamicsReport(BaseModel):
     peak_bucket_volume: int = Field(default=0, ge=0, description="Maximum post volume in any single bucket")
     peak_bucket_engagement: float = Field(default=0.0, ge=0.0, description="Maximum engagement in any single bucket")
     anomalous_intervals_count: int = Field(default=0, ge=0, description="Number of anomalous interval spikes")
+    baseline_comparison: Optional[TemporalBaselineComparison] = Field(
+        default=None,
+        description="Comparative analytics between historical baseline and current active window"
+    )
+    detected_anomalies: List[TemporalAnomalyDetail] = Field(
+        default_factory=list,
+        description="Itemized list of detected statistical anomalies with severity tiers"
+    )
+    platform_temporal_comparison: Optional[CrossPlatformTemporalReport] = Field(
+        default=None,
+        description="Comparative cross-platform temporal presence and timeline dynamics"
+    )
+    trajectory_signal: Optional[TemporalTrajectorySignal] = Field(
+        default=None,
+        description="Near-term deterministic heuristic trajectory signal"
+    )
+    temporal_insights: List[str] = Field(
+        default_factory=list,
+        description="Human-readable structured temporal insights"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
