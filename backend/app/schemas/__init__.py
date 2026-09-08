@@ -39,6 +39,12 @@ from app.schemas.topic import (
     ExtractedTopic,
     SinglePostTopicResult,
 )
+from app.schemas.trend import (
+    BatchTrendResult,
+    TimeWindow,
+    TopicTrendResult,
+    TrendDirection,
+)
 
 __all__ = [
     "RawPostPayload",
@@ -70,4 +76,8 @@ __all__ = [
     "SinglePostTopicResult",
     "ExtractedTopic",
     "BatchTopicResult",
+    "TrendDirection",
+    "TimeWindow",
+    "TopicTrendResult",
+    "BatchTrendResult",
 ]
