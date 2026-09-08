@@ -34,6 +34,18 @@ from app.schemas.sentiment import (
     SentimentProbabilities,
     SentimentResult,
 )
+from app.schemas.demographic import (
+    AgeGroup,
+    BatchDemographicResult,
+    DemographicBreakdown,
+    DemographicDistribution,
+    DemographicProfile,
+    GenderCategory,
+    LocationData,
+    SentimentDemographicResult,
+    TopicDemographicResult,
+    TrendDemographicResult,
+)
 from app.schemas.topic import (
     BatchTopicResult,
     ExtractedTopic,
@@ -80,4 +92,14 @@ __all__ = [
     "TimeWindow",
     "TopicTrendResult",
     "BatchTrendResult",
+    "AgeGroup",
+    "GenderCategory",
+    "LocationData",
+    "DemographicProfile",
+    "DemographicBreakdown",
+    "DemographicDistribution",
+    "TopicDemographicResult",
+    "SentimentDemographicResult",
+    "TrendDemographicResult",
+    "BatchDemographicResult",
 ]
