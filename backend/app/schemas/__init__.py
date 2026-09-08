@@ -34,6 +34,11 @@ from app.schemas.sentiment import (
     SentimentProbabilities,
     SentimentResult,
 )
+from app.schemas.topic import (
+    BatchTopicResult,
+    ExtractedTopic,
+    SinglePostTopicResult,
+)
 
 __all__ = [
     "RawPostPayload",
@@ -62,4 +67,7 @@ __all__ = [
     "EmotionProbabilities",
     "EmotionResult",
     "BatchEmotionResult",
+    "SinglePostTopicResult",
+    "ExtractedTopic",
+    "BatchTopicResult",
 ]
