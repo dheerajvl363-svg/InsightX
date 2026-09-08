@@ -71,11 +71,27 @@ class TestPhase5APIHardening(unittest.TestCase):
     def setUpClass(cls):
         Base.metadata.create_all(bind=engine)
         cls.db = SessionLocal()
+        cls._cleanup_harden_records()
         cls._seed_test_database()
 
     @classmethod
     def tearDownClass(cls):
+        cls._cleanup_harden_records()
         cls.db.close()
+
+    @classmethod
+    def _cleanup_harden_records(cls):
+        """Removes test records created by this test class to prevent cross-test leakage."""
+        try:
+            harden_posts = cls.db.query(Post).filter(Post.external_post_id.startswith("harden_")).all()
+            post_ids = [p.id for p in harden_posts]
+            if post_ids:
+                cls.db.query(PostMetric).filter(PostMetric.post_id.in_(post_ids)).delete(synchronize_session=False)
+                cls.db.query(Post).filter(Post.id.in_(post_ids)).delete(synchronize_session=False)
+            cls.db.query(User).filter(User.username.startswith("harden_")).delete(synchronize_session=False)
+            cls.db.commit()
+        except Exception:
+            cls.db.rollback()
 
     @classmethod
     def _seed_test_database(cls):
@@ -94,6 +110,12 @@ class TestPhase5APIHardening(unittest.TestCase):
         if not u1:
             u1 = User(platform_id=p_x.id, username="harden_user_1", display_name="Harden User One")
             cls.db.add(u1)
+            cls.db.commit()
+
+        u2 = cls.db.query(User).filter(User.username == "harden_user_2").first()
+        if not u2:
+            u2 = User(platform_id=p_tg.id, username="harden_user_2", display_name="Harden User Two")
+            cls.db.add(u2)
             cls.db.commit()
 
         base_time = datetime(2026, 9, 8, 12, 0, 0)
@@ -119,7 +141,7 @@ class TestPhase5APIHardening(unittest.TestCase):
         if not p2:
             p2 = Post(
                 platform_id=p_tg.id,
-                user_id=u1.id,
+                user_id=u2.id,
                 external_post_id="harden_p2",
                 text="Clean energy transition is accelerating worldwide. #EV #GreenEnergy",
                 posted_at=base_time + timedelta(hours=2),
