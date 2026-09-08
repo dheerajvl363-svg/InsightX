@@ -1,3 +1,13 @@
+from app.schemas.common import (
+    DateTimeFilter,
+    ErrorDetail,
+    ErrorResponse,
+    HealthResponse,
+    PagedResponse,
+    PaginationParams,
+    PlatformFilter,
+    ServiceStatus,
+)
 from app.schemas.analytics import (
     CountResponse,
     EngagementSummary,
@@ -103,6 +113,16 @@ from app.schemas.analytics_engine import (
 )
 
 __all__ = [
+    # --- Phase 5.2: common foundational schemas ---
+    "HealthResponse",
+    "ServiceStatus",
+    "PaginationParams",
+    "DateTimeFilter",
+    "PlatformFilter",
+    "ErrorDetail",
+    "ErrorResponse",
+    "PagedResponse",
+    # --- Phase 1–4 schemas (unchanged) ---
     "RawPostPayload",
     "PostMetricsSchema",
     "NormalizedPost",
