@@ -8,6 +8,12 @@ from app.schemas.analytics import (
     TimeSeriesPoint,
     TimeSeriesResponse,
 )
+from app.schemas.data_quality import (
+    AnalyticsReadyPost,
+    BatchDataQualityResult,
+    DataQualityResult,
+    RejectedRecord,
+)
 from app.schemas.platform import PlatformResponse
 from app.schemas.post import (
     BatchIngestionResponse,
@@ -32,4 +38,8 @@ __all__ = [
     "EngagementSummary",
     "TimeSeriesPoint",
     "TimeSeriesResponse",
+    "AnalyticsReadyPost",
+    "DataQualityResult",
+    "RejectedRecord",
+    "BatchDataQualityResult",
 ]
