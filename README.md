@@ -6,19 +6,28 @@ InsightX is an intelligent social media intelligence platform that turns real-ti
 
 ---
 
-## Current Status: Phase 3 Complete
+## Current Status: Phase 4 Complete (Release Ready)
 
 - **Phase 1 (Backend & Database Foundation)**: FastAPI, PostgreSQL, SQLAlchemy ORM models, health monitoring.
 - **Phase 2 (Data Ingestion & Normalization)**: Platform adapters (X, Reddit, Telegram, YouTube), `DataNormalizer`, PostgreSQL storage, engagement metrics tracking.
-- **Phase 3 (Analytics Engine Platform)**: Complete.
+- **Phase 3 (NLP Analytics Platform Foundation)**:
   - **3.1 Data Quality**: Unicode NFC normalization, entity extraction (`#hashtags`, `@mentions`, `emojis`, `urls`), quality filtering, `AnalyticsReadyPost`.
   - **3.2 Sentiment Analysis**: Lexicon-based polarity scoring and classification (`positive`, `neutral`, `negative`).
   - **3.3 Emotion Analysis**: Ekman 7-class emotion detection (`joy`, `sadness`, `anger`, `fear`, `surprise`, `disgust`, `neutral`) with confidence distributions.
   - **3.4 Topic & Narrative Extraction**: Unsupervised keyword and n-gram clustering.
-  - **3.5 Trend Detection**: Temporal sliding window velocity tracking, percentage growth rates, statistical z-scores, trajectory classifications (`EMERGING`, `SPIKING`, `GROWING`, `STABLE`, `DECLINING`).
+  - **3.5 Trend Detection**: Temporal sliding window velocity tracking, percentage growth rates, statistical z-scores, trajectory classifications.
   - **3.6 Demographic Intelligence**: Age-group, gender, and geographic aggregation with k-anonymity privacy suppression (`min_group_size`).
-  - **3.7 Analytics REST API**: Unified multi-layer orchestration via `POST /api/v1/analytics/analyze`.
-  - **3.8 Integration & Validation**: 297 unit, integration, and reliability regression tests passing with 0 failures and 0 errors.
+  - **3.7 Analytics REST API**: Multi-layer orchestration via `POST /api/v1/analytics/analyze`.
+- **Phase 4 (Advanced Analytics Engine & Release Readiness)**: Complete ([docs/PHASE_4.md](docs/PHASE_4.md)).
+  - **4.1 Architecture & Base Engines**: Abstract base classes and orchestrator pattern (`AnalyticsEngineService`).
+  - **4.2 Engagement & Virality**: Weighted scoring ($E$), virality index ($V$), discussion depth ($D$), statistical distributions, outlier detection ($k \cdot \sigma$), and cross-platform benchmarking.
+  - **4.3 Sentiment & Net Sentiment Score**: Per-post polarity, Net Sentiment Score ($\text{NSS} \in [-1, 1]$), platform partitioning, and continuous temporal tracking.
+  - **4.4 Trend & Momentum Analytics**: Volume velocity, acceleration, growth rate %, engagement factor, momentum scoring, and spike classifications.
+  - **4.5 Narrative Dynamics**: Thematic clustering, 6-stage lifecycle state machine (`emerging`, `accelerating`, `peak`, `sustained`, `decaying`, `dormant`), sentiment drift ($\Delta S$), and narrative impact scoring.
+  - **4.6 Advanced Time-Series**: Discrete temporal bucketing (hour, day, week), moving averages ($\text{SMA}_k$), baseline vs. current window comparison, multi-tier anomaly detection (`elevated`, `anomalous`, `extreme_spike`), and short-term trajectory signals.
+  - **4.7 Analytics Engine REST API**: Modular API router mounted at `/api/v1/analytics/engine/*` with specialized and unified endpoints.
+  - **4.8 Integration & Hardening**: End-to-end multi-platform integration, cross-component consistency, edge-case resilience, determinism, and performance sanity guards.
+  - **4.9 Documentation & Release Readiness**: 391 unit, integration, and contract tests passing with 0 failures and 0 errors.
 
 ---
 
@@ -107,7 +116,8 @@ InsightX/
 │   └── requirements.txt
 ├── docs/                           # Documentation
 │   ├── PHASE_1.md                  # Phase 1 documentation
-│   └── PHASE_3.md                  # Phase 3 technical documentation
+│   ├── PHASE_3.md                  # Phase 3 technical documentation
+│   └── PHASE_4.md                  # Phase 4 Advanced Analytics Engine documentation
 └── README.md
 ```
 
@@ -116,6 +126,21 @@ InsightX/
 ## Analytics API Endpoints
 
 ### Base URL: `http://localhost:8000`
+
+#### Phase 4 Analytics Engine Endpoints (Mounted at `/api/v1/analytics/engine`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/analytics/engine/health` | Analytics Engine health check probe |
+| `GET` | `/api/v1/analytics/engine/capabilities` | Runtime metadata on active engines, supported intervals, and capabilities |
+| `POST` | `/api/v1/analytics/engine/analyze` | Full multi-signal Analytics Engine pipeline report (`Phase4AnalyticsReport`) |
+| `POST` | `/api/v1/analytics/engine/engagement` | Specialized engagement profiles, virality indices, and platform breakdowns |
+| `POST` | `/api/v1/analytics/engine/sentiment` | Specialized polarity distributions, Net Sentiment Score, and temporal drift |
+| `POST` | `/api/v1/analytics/engine/trends` | Specialized trend detection, momentum scores, and spike anomalies |
+| `POST` | `/api/v1/analytics/engine/narratives` | Specialized narrative clustering, 6-stage lifecycles, and impact scoring |
+| `POST` | `/api/v1/analytics/engine/time-series` | Specialized temporal interval dynamics, moving averages, and anomalies |
+
+#### Phase 3 Foundation Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -126,7 +151,7 @@ InsightX/
 | `POST` | `/api/v1/analytics/topics` | Unsupervised keyword and topic clustering |
 | `POST` | `/api/v1/analytics/trends` | Temporal velocity and trend trajectory classification |
 | `POST` | `/api/v1/analytics/demographics` | Age, gender, and location demographic breakdown |
-| `POST` | `/api/v1/analytics/analyze` | Unified multi-layer analytics orchestration |
+| `POST` | `/api/v1/analytics/analyze` | Unified multi-layer Phase 3 analytics orchestration |
 
 ---
 
@@ -213,8 +238,14 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### 2. Running Test Suite
 ```bash
-# Run complete test suite (297 tests)
+# Run complete test suite (391 tests)
 .venv/bin/python -m unittest discover -s tests -p "test_*.py"
+
+# Run Phase 4 end-to-end integration & quality hardening tests
+.venv/bin/python -m unittest tests/test_phase4_integration.py
+
+# Run Phase 4 analytics engine API tests
+.venv/bin/python -m unittest tests/test_analytics_engine_api.py
 
 # Run end-to-end integration tests only
 .venv/bin/python -m unittest tests/test_integration.py
