@@ -11,6 +11,7 @@ import {
   Activity,
   Compass,
   ExternalLink,
+  Info,
 } from 'lucide-react';
 import { Card, StatCard, Badge, Button, ErrorBanner } from '../common';
 import { useOverview } from '../../hooks/useOverview';
@@ -311,7 +312,10 @@ export const DashboardPage: React.FC = () => {
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => setDemoResult(null)}
+                onClick={() => {
+                  setDemoResult(null);
+                  handleRefreshAll();
+                }}
                 style={{ fontSize: '0.75rem' }}
               >
                 Exit Demo Mode
@@ -379,8 +383,8 @@ export const DashboardPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Highlight Primary Detected Insight if any */}
-            {demoResult.primary_insight && (
+            {/* Highlight Primary Detected Insight or Honest No-Signal State */}
+            {demoResult.is_seed_grounded && demoResult.primary_insight ? (
               <div
                 style={{
                   marginTop: '0.35rem',
@@ -425,6 +429,53 @@ export const DashboardPage: React.FC = () => {
                 >
                   Inspect Evidence & AI Explanation
                 </Button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: '0.35rem',
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px dashed var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <div style={{ color: 'var(--text-tertiary)' }}>
+                    <Info size={18} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        No Seed-Supported Statistical Signal
+                      </span>
+                      <Badge variant="neutral" size="sm">
+                        {demoResult.user_post_count === 1 ? 'Single Post (N=1)' : `Below Threshold (${demoResult.user_post_count} Posts)`}
+                      </Badge>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                      {demoResult.user_post_count === 1
+                        ? 'Single post analyzed: Insufficient volume to establish a statistical trend or anomaly against baseline (requires ≥2 posts). Ambient baseline insights are shown in the Intelligence Feed below.'
+                        : 'Submitted posts did not meet the statistical volume or velocity thresholds to trigger an emerging narrative signal.'}
+                    </div>
+                  </div>
+                </div>
+
+                {demoResult.ambient_insight && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setSelectedInsight(demoResult.ambient_insight!)}
+                    style={{ fontSize: '0.75rem' }}
+                  >
+                    View Ambient Baseline Insight &rarr;
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -711,7 +762,11 @@ export const DashboardPage: React.FC = () => {
       <InsightExplanationDrawer
         insight={selectedInsight}
         platform={platformParam}
-        aiInterpretation={demoResult?.primary_ai_interpretation}
+        aiInterpretation={
+          selectedInsight && demoResult?.primary_insight && selectedInsight.id === demoResult.primary_insight.id
+            ? demoResult.primary_ai_interpretation
+            : undefined
+        }
         onClose={() => setSelectedInsight(null)}
       />
 
@@ -719,10 +774,17 @@ export const DashboardPage: React.FC = () => {
       <AnalyzePostModal
         isOpen={isAnalyzeModalOpen}
         onClose={() => setIsAnalyzeModalOpen(false)}
-        onSuccess={(result) => {
+        onSuccess={async (result) => {
           setDemoResult(result);
-          // If primary insight exists, open explanation drawer for immediate inspection
-          if (result.primary_insight) {
+
+          // Phase 9.10: Automatically synchronize overview and timeline charts
+          // when demo posts are persisted or evaluated against database context
+          if (result.persisted || result.context_mode === 'database') {
+            await Promise.all([refetchOverview(), refetchTimeline()]);
+          }
+
+          // If a genuine seed-grounded primary insight exists, open explanation drawer for immediate inspection
+          if (result.is_seed_grounded && result.primary_insight) {
             setSelectedInsight(result.primary_insight);
           }
         }}

@@ -506,13 +506,21 @@ class DemoAnalysisResponse(BaseModel):
         ...,
         description="Complete multi-facet analytics and deterministic intelligence report",
     )
+    is_seed_grounded: bool = Field(
+        default=False,
+        description="True if primary_insight is directly supported by user-supplied seed posts",
+    )
     primary_insight: Optional[InsightItem] = Field(
         default=None,
         description="Primary detected insight directly grounded in user-supplied seed posts",
     )
+    ambient_insight: Optional[InsightItem] = Field(
+        default=None,
+        description="Top ambient baseline insight from background/context if no seed insight was found",
+    )
     primary_ai_interpretation: Optional[Any] = Field(
         default=None,
-        description="Evidence-grounded AI qualitative interpretation if requested",
+        description="Evidence-grounded AI qualitative interpretation if requested and seed-grounded",
     )
     warnings: List[str] = Field(
         default_factory=list,

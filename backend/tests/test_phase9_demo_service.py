@@ -26,7 +26,10 @@ def demo_service(mock_ai_service):
 
 
 def test_single_post_analysis_sample_context(demo_service):
-    """Test analyzing a single user post with sample context enabled."""
+    """Test analyzing a single user post with sample context enabled.
+    Phase 9.10: Single post below volume threshold must have is_seed_grounded=False
+    and primary_insight=None (no fake seed trend), while ambient_insight captures background context.
+    """
     user_post = DemoPostInput(
         text="Critical cybersecurity alert: Major outage detected across cloud infrastructure. #outage",
         author="@sec_lead",
@@ -61,8 +64,39 @@ def test_single_post_analysis_sample_context(demo_service):
     assert response.unified_report is not None
     assert response.unified_report.analytics_summary["total_posts"] == response.total_context_size
 
-    # Check AI interpretation generated cleanly
+    # Phase 9.10: Single post does not meet threshold for seed trend
+    assert response.is_seed_grounded is False
+    assert response.primary_insight is None
+    # Ambient baseline insight is preserved separately without seed mislabeling
+    assert response.ambient_insight is not None
+    assert response.primary_ai_interpretation is None
+
+
+def test_multi_post_analysis_seed_grounded(demo_service):
+    """Phase 9.10: Multiple related posts trigger genuine seed-grounded insight with AI interpretation."""
+    posts = [
+        DemoPostInput(text="Payment gateway cluster 1 failing transactions across all users.", author="user_a"),
+        DemoPostInput(text="Payment gateway cluster 2 timeout errors spiking rapidly.", author="user_b"),
+        DemoPostInput(text="Payment gateway outage confirmed by merchant services.", author="user_c"),
+    ]
+    request = DemoAnalyzePostsRequest(
+        posts=posts,
+        context_mode=DemoContextMode.SAMPLE_STREAM,
+        persist_to_db=False,
+        include_ai=True,
+    )
+
+    response = demo_service.analyze_demo_posts(request)
+
+    assert response.user_post_count == 3
+    assert response.is_seed_grounded is True
+    assert response.primary_insight is not None
+    assert "Payment" in response.primary_insight.title or "Outage" in response.primary_insight.title
     assert response.primary_ai_interpretation is not None
+    # Evidence must link to user seed external IDs
+    seed_ext_ids = {p.get("external_post_id") for p in response.seed_posts}
+    evidence_ext_ids = set(response.primary_insight.evidence.external_post_ids or [])
+    assert bool(seed_ext_ids.intersection(evidence_ext_ids))
 
 
 def test_multi_post_analysis_none_context(demo_service):
@@ -99,7 +133,7 @@ def test_multi_post_analysis_none_context(demo_service):
 
 
 def test_demo_service_handles_ai_failure_gracefully(demo_service):
-    """Test that if AI service raises an error, deterministic analysis succeeds with a warning."""
+    """Test that if AI service raises an error on a seed-grounded insight, deterministic analysis succeeds with a warning."""
     failing_ai_service = MagicMock(spec=AIAssistedIntelligenceService)
     failing_ai_service.analyze_insight.side_effect = RuntimeError("Provider timeout simulation")
 
@@ -110,10 +144,9 @@ def test_demo_service_handles_ai_failure_gracefully(demo_service):
 
     request = DemoAnalyzePostsRequest(
         posts=[
-            DemoPostInput(
-                text="Emergency notice: DNS resolution failures observed in US-East region.",
-                author="netops",
-            )
+            DemoPostInput(text="Payment gateway failure alert 1.", author="op1"),
+            DemoPostInput(text="Payment gateway failure alert 2.", author="op2"),
+            DemoPostInput(text="Payment gateway failure alert 3.", author="op3"),
         ],
         context_mode=DemoContextMode.SAMPLE_STREAM,
         persist_to_db=False,
@@ -122,7 +155,9 @@ def test_demo_service_handles_ai_failure_gracefully(demo_service):
 
     response = service.analyze_demo_posts(request)
 
-    assert response.user_post_count == 1
+    assert response.user_post_count == 3
+    assert response.is_seed_grounded is True
+    assert response.primary_insight is not None
     assert response.unified_report is not None
     assert response.primary_ai_interpretation is None
     assert any("AI qualitative interpretation unavailable" in w for w in response.warnings)

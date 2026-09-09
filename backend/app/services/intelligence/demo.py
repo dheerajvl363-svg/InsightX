@@ -268,6 +268,9 @@ class DemoIntelligenceService:
 
         # 5. Resolve Primary Insight grounded in user posts
         primary_insight: Optional[InsightItem] = None
+        ambient_insight: Optional[InsightItem] = None
+        is_seed_grounded = False
+
         user_ext_ids = {p.external_post_id for p in user_posts if p.external_post_id}
         user_db_ids = {p.id for p in user_posts if p.id is not None}
 
@@ -278,15 +281,17 @@ class DemoIntelligenceService:
             matched_id = any(pid in user_db_ids for pid in (ev.post_ids or []))
             if matched_ext or matched_id:
                 primary_insight = ins
+                is_seed_grounded = True
                 break
 
-        # If no insight specifically isolates user seed, take top ranked insight
-        if not primary_insight and unified_report.batch_insights.insights:
-            primary_insight = unified_report.batch_insights.insights[0]
+        # Capture top ambient context insight if any exist and no seed insight was found
+        if not is_seed_grounded and unified_report.batch_insights.insights:
+            ambient_insight = unified_report.batch_insights.insights[0]
 
         # 6. Resolve Primary AI Qualitative Interpretation if requested
         primary_ai_interpretation: Optional[Any] = None
-        if request.include_ai and primary_insight:
+        # Only synthesize AI interpretation if there is a genuine seed-grounded primary insight
+        if request.include_ai and primary_insight and is_seed_grounded:
             matching_expl: Optional[InsightExplanation] = None
             for expl in unified_report.explanations:
                 if expl.insight_id == primary_insight.id:
@@ -313,7 +318,9 @@ class DemoIntelligenceService:
             context_mode=request.context_mode,
             persisted=persisted,
             unified_report=unified_report,
+            is_seed_grounded=is_seed_grounded,
             primary_insight=primary_insight,
+            ambient_insight=ambient_insight,
             primary_ai_interpretation=primary_ai_interpretation,
             warnings=all_warnings,
             executed_at=datetime.now(timezone.utc),

@@ -332,17 +332,22 @@ class TestPhase9DemoWorkflow(unittest.TestCase):
             self.assertIn("raw_signals", insights[0]["evidence"])
 
     def test_17_ai_enabled_with_mock_provider(self):
-        """17. AI interpretation is synthesized when include_ai=True."""
+        """17. AI interpretation is synthesized when include_ai=True on a seed-grounded signal."""
         payload = {
-            "posts": [{"text": "Major breakthrough in quantum computing hardware announced.", "author": "quantum_lab"}],
+            "posts": [
+                {"text": "Payment gateway cluster 1 failing transactions across all users.", "author": "dev1"},
+                {"text": "Payment gateway cluster 2 timeout errors spiking rapidly.", "author": "dev2"},
+                {"text": "Payment gateway outage confirmed by merchant services.", "author": "dev3"},
+            ],
             "context_mode": "sample_stream",
             "persist_to_db": False,
             "include_ai": True,
         }
         status, res = call_api("POST", "/api/v1/intelligence/demo/analyze-posts", payload)
         self.assertEqual(status, 200, res)
-        if res.get("primary_insight"):
-            self.assertIsNotNone(res.get("primary_ai_interpretation"))
+        self.assertTrue(res["is_seed_grounded"])
+        self.assertIsNotNone(res["primary_insight"])
+        self.assertIsNotNone(res["primary_ai_interpretation"])
 
     def test_18_ai_disabled(self):
         """18. AI interpretation is None when include_ai=False."""
@@ -360,13 +365,18 @@ class TestPhase9DemoWorkflow(unittest.TestCase):
         """19. AI failure gracefully records a warning without breaking analysis."""
         with patch("app.services.intelligence.demo.AIAssistedIntelligenceService.analyze_insight", side_effect=RuntimeError("Simulated LLM network failure")):
             payload = {
-                "posts": [{"text": "Simulating LLM failure.", "author": "failure_tester"}],
+                "posts": [
+                    {"text": "Payment gateway cluster 1 failing transactions.", "author": "dev1"},
+                    {"text": "Payment gateway cluster 2 timeout errors.", "author": "dev2"},
+                    {"text": "Payment gateway outage confirmed.", "author": "dev3"},
+                ],
                 "context_mode": "sample_stream",
                 "persist_to_db": False,
                 "include_ai": True,
             }
             status, res = call_api("POST", "/api/v1/intelligence/demo/analyze-posts", payload)
             self.assertEqual(status, 200, res)
+            self.assertTrue(res["is_seed_grounded"])
             self.assertIsNone(res.get("primary_ai_interpretation"))
             self.assertTrue(any("AI qualitative interpretation unavailable" in w for w in res["warnings"]))
 
@@ -431,9 +441,49 @@ class TestPhase9DemoWorkflow(unittest.TestCase):
             "context_mode",
             "persisted",
             "unified_report",
+            "is_seed_grounded",
             "primary_insight",
+            "ambient_insight",
             "warnings",
             "executed_at",
         ]
         for key in required_keys:
             self.assertIn(key, res, f"Missing required response field: {key}")
+
+    def test_24_single_post_sample_context_not_labeled_seed_grounded(self):
+        """24. Phase 9.10: Single post with sample context must have is_seed_grounded=False, primary_insight=None."""
+        payload = {
+            "posts": [{"text": "Single isolated post on payment gateway issues.", "author": "solo_user"}],
+            "context_mode": "sample_stream",
+            "persist_to_db": False,
+            "include_ai": True,
+        }
+        status, res = call_api("POST", "/api/v1/intelligence/demo/analyze-posts", payload)
+        self.assertEqual(status, 200, res)
+        self.assertFalse(res["is_seed_grounded"])
+        self.assertIsNone(res["primary_insight"])
+        self.assertIsNotNone(res["ambient_insight"])
+        self.assertIsNone(res.get("primary_ai_interpretation"))
+
+    def test_25_multiple_posts_yield_genuine_seed_grounded_insight(self):
+        """25. Phase 9.10: Multiple related posts trigger genuine seed-grounded insight and AI interpretation."""
+        payload = {
+            "posts": [
+                {"text": "Cloud service outage: database connections timing out #outage", "author": "admin1"},
+                {"text": "Database cluster outage confirmed in region 1. Latency spiking.", "author": "admin2"},
+                {"text": "Failover outage in database proxy causing elevated 500 errors.", "author": "admin3"},
+            ],
+            "context_mode": "sample_stream",
+            "persist_to_db": False,
+            "include_ai": True,
+        }
+        status, res = call_api("POST", "/api/v1/intelligence/demo/analyze-posts", payload)
+        self.assertEqual(status, 200, res)
+        self.assertTrue(res["is_seed_grounded"])
+        self.assertIsNotNone(res["primary_insight"])
+        self.assertIsNone(res["ambient_insight"])
+        self.assertIsNotNone(res.get("primary_ai_interpretation"))
+        # Evidence post IDs or external IDs must overlap with user seed posts
+        seed_ext_ids = {s["external_post_id"] for s in res["seed_posts"]}
+        evidence_ext = set(res["primary_insight"]["evidence"]["external_post_ids"])
+        self.assertTrue(bool(seed_ext_ids.intersection(evidence_ext)))

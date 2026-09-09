@@ -511,7 +511,9 @@ export interface DemoAnalysisResponse {
   context_mode: DemoContextMode;
   persisted: boolean;
   unified_report: UnifiedWorkflowResult;
+  is_seed_grounded?: boolean;
   primary_insight?: InsightItem | null;
+  ambient_insight?: InsightItem | null;
   primary_ai_interpretation?: Record<string, unknown> | null;
   warnings: string[];
   executed_at: string;
