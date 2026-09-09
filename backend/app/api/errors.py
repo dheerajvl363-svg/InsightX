@@ -7,6 +7,7 @@ HTTP exceptions, and unexpected failures to standardized, safe ErrorResponse env
 
 import logging
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -105,7 +106,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
             content={
                 "error": "validation_error",
                 "message": "Request validation failed.",
-                "detail": exc.errors(),
+                "detail": jsonable_encoder(exc.errors()),
                 "details": field_details,
                 "request_id": getattr(request.state, "request_id", None),
             },

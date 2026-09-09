@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.intelligence import (
     BatchInsightResult,
+    DemoAnalysisResponse,
+    DemoAnalyzePostsRequest,
     InsightExplanation,
     IntelligenceAnalyzeRequest,
     UnifiedWorkflowResult,
@@ -14,6 +16,10 @@ from app.schemas.intelligence import (
 from app.services.intelligence.ai import (
     AIInterpretationRequest,
     AIInterpretationResponse,
+)
+from app.services.intelligence.demo import (
+    DemoIntelligenceService,
+    get_demo_intelligence_service,
 )
 from app.services.intelligence.workflow import (
     UnifiedIntelligenceWorkflow,
@@ -30,6 +36,11 @@ router = APIRouter(tags=["Intelligence"])
 def get_workflow_instance(db: Session = Depends(get_db)) -> UnifiedIntelligenceWorkflow:
     """Dependency provider resolving the unified intelligence workflow."""
     return get_unified_workflow(db=db)
+
+
+def get_demo_service_instance(db: Session = Depends(get_db)) -> DemoIntelligenceService:
+    """Dependency provider resolving the demo intelligence service."""
+    return get_demo_intelligence_service(db=db)
 
 
 @router.get(
@@ -222,4 +233,28 @@ def analyze_payload(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during payload analysis.",
+        )
+
+
+@router.post(
+    "/demo/analyze-posts",
+    response_model=DemoAnalysisResponse,
+    summary="Analyze User-Supplied Demo Posts",
+    description="Processes 1 to 50 user-supplied social posts with platform normalization, auditable provenance, contextual baseline, deterministic intelligence, and optional grounded AI interpretation.",
+)
+def analyze_demo_posts(
+    payload: DemoAnalyzePostsRequest,
+    service: DemoIntelligenceService = Depends(get_demo_service_instance),
+) -> DemoAnalysisResponse:
+    try:
+        return service.analyze_demo_posts(payload)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error during demo post analysis: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while executing the demo post analysis.",
         )
