@@ -11,10 +11,15 @@ from app.schemas.intelligence import (
     IntelligenceAnalyzeRequest,
     UnifiedWorkflowResult,
 )
+from app.services.intelligence.ai import (
+    AIInterpretationRequest,
+    AIInterpretationResponse,
+)
 from app.services.intelligence.workflow import (
     UnifiedIntelligenceWorkflow,
     get_unified_workflow,
 )
+
 
 
 logger = logging.getLogger(__name__)
@@ -127,6 +132,45 @@ def get_insight_explanation(
 
 
 @router.post(
+    "/insights/{insight_id}/ai-interpret",
+    response_model=AIInterpretationResponse,
+    summary="Generate AI Interpretation for Insight",
+    description="Generates an evidence-grounded, AI-assisted qualitative interpretation for a specific insight.",
+)
+def get_ai_interpretation_for_insight(
+    insight_id: str,
+    payload: Optional[AIInterpretationRequest] = None,
+    workflow: UnifiedIntelligenceWorkflow = Depends(get_workflow_instance),
+    db: Session = Depends(get_db),
+) -> AIInterpretationResponse:
+    req_payload = payload or AIInterpretationRequest()
+    try:
+        return workflow.get_ai_interpretation(
+            insight_id=insight_id,
+            platform=req_payload.platform,
+            prompt_instructions=req_payload.prompt_instructions,
+            max_post_ids=req_payload.max_post_ids,
+            raw_posts=req_payload.raw_posts,
+            db=db,
+        )
+    except LookupError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Insight {insight_id} not found in recent synthesized intelligence.",
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error generating AI interpretation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while generating AI interpretation.",
+        )
+
+
+@router.post(
     "/analyze",
     response_model=BatchInsightResult,
     summary="Analyze Payload for Insights",
@@ -151,7 +195,8 @@ def analyze_payload(
             platform=payload.platform,
             min_confidence=payload.min_confidence or 0.5,
             max_insights=payload.max_insights or 20,
-            generate_explanations=bool(payload.include_explanations),
+            generate_explanations=bool(payload.include_explanations or payload.include_ai),
+            include_ai=bool(payload.include_ai),
         )
 
         batch_result = report.batch_insights
@@ -160,6 +205,12 @@ def analyze_payload(
             for item in batch_result.insights:
                 if item.id in expl_map:
                     item.metadata["explanation"] = expl_map[item.id]
+
+        if payload.include_ai and report.ai_analyses:
+            ai_map = {a.insight_id: a.model_dump() for a in report.ai_analyses}
+            for item in batch_result.insights:
+                if item.id in ai_map:
+                    item.metadata["ai_analysis"] = ai_map[item.id]
 
         return batch_result
     except HTTPException:

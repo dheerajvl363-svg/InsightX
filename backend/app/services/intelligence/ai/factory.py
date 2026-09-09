@@ -4,6 +4,7 @@ from typing import Dict, Optional, Type
 from app.config import AI_MODEL_NAME, AI_PROVIDER
 from app.services.intelligence.ai.base import BaseAIProvider
 from app.services.intelligence.ai.mock import MockAIProvider
+from app.services.intelligence.ai.openai import OpenAIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_REGISTRY: Dict[str, Type[BaseAIProvider]] = {
     "mock": MockAIProvider,
     "noop": MockAIProvider,
+    "openai": OpenAIProvider,
 }
 
 _provider_instances: Dict[str, BaseAIProvider] = {}
@@ -49,8 +51,11 @@ def get_ai_provider(
         )
         provider_cls = MockAIProvider
 
-    instance = provider_cls(model_name=selected_model) if issubclass(provider_cls, MockAIProvider) else provider_cls()
-    
+    if issubclass(provider_cls, (MockAIProvider, OpenAIProvider)):
+        instance = provider_cls(model_name=selected_model)
+    else:
+        instance = provider_cls()
+
     if not instance.is_available():
         logger.warning(
             f"AI Provider '{instance.provider_name}' is not available (e.g. missing API keys). "

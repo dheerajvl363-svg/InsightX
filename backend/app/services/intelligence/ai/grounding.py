@@ -12,19 +12,24 @@ def extract_grounding_metadata(context: AIContext) -> AIGroundingMetadata:
     Extracts explicit provenance metadata directly from an AIContext object.
     Ensures metadata is anchored to factual telemetry rather than LLM assertions.
     """
-    has_evidence = bool(
-        context.supporting_post_ids
-        or context.external_post_ids
-        or context.facts
-        or context.deterministic_metrics
+    has_evidence = context.is_fully_grounded and bool(
+        context.total_supporting_post_count > 0
+        or context.total_external_post_count > 0
+        or context.total_fact_count > 0
+        or bool(context.deterministic_metrics)
     )
 
     return AIGroundingMetadata(
         insight_id=context.insight_id,
         evidence_topic_id=None,
         evidence_topic_label=context.affected_topic,
+        total_supporting_post_count=context.total_supporting_post_count,
         supporting_post_ids=list(context.supporting_post_ids),
+        total_external_post_count=context.total_external_post_count,
         external_post_ids=list(context.external_post_ids),
+        total_key_author_count=context.total_key_author_count,
+        total_fact_count=context.total_fact_count,
+        evidence_is_truncated=context.evidence_is_truncated,
         platforms=list(context.affected_platforms),
         time_window=context.time_window,
         deterministic_metrics_used=dict(context.deterministic_metrics),

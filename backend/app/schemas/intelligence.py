@@ -118,8 +118,10 @@ class IntelligenceAnalyzeRequest(BaseModel):
     min_confidence: Optional[float] = Field(default=0.5, ge=0.0, le=1.0, description="Minimum confidence threshold for inclusion")
     max_insights: Optional[int] = Field(default=20, ge=1, le=100, description="Maximum insights to return")
     include_explanations: Optional[bool] = Field(default=False, description="Whether to synthesize and attach explanations to insights")
+    include_ai: Optional[bool] = Field(default=False, description="Whether to generate AI qualitative interpretations")
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class InsightEvidenceReferences(BaseModel):
@@ -189,7 +191,9 @@ class UnifiedWorkflowResult(BaseModel):
     total_explanations: int = Field(default=0, ge=0, description="Total number of explanations generated")
     batch_insights: BatchInsightResult = Field(..., description="Container of generated intelligence insights")
     explanations: List[InsightExplanation] = Field(default_factory=list, description="List of generated explanations")
+    ai_analyses: List[Any] = Field(default_factory=list, description="Optional AI qualitative interpretations")
     analytics_summary: Dict[str, Any] = Field(default_factory=dict, description="Summary telemetry from underlying analytical models")
+
     model: str = Field(..., description="Identifier of the unified pipeline engine and version")
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),

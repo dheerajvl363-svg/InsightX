@@ -2,12 +2,11 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.services.intelligence.ai.base import BaseAIProvider
-from app.services.intelligence.ai.grounding import validate_grounding
+from app.services.intelligence.ai.grounding import extract_grounding_metadata, validate_grounding
 from app.services.intelligence.ai.schemas import (
     AIAnalysisRequest,
     AIAnalysisResponse,
     AIContext,
-    AIGroundingMetadata,
 )
 
 
@@ -44,18 +43,20 @@ class MockAIProvider(BaseAIProvider):
         now = datetime.now(timezone.utc)
 
         # Build grounded interpretation
-        facts_summary = f" Supported by {len(ctx.facts)} deterministic facts." if ctx.facts else ""
+        facts_summary = f" Supported by {ctx.total_fact_count} deterministic facts." if ctx.facts else ""
         metrics_str = (
             ", ".join(f"{k}={v}" for k, v in ctx.deterministic_metrics.items())
             if ctx.deterministic_metrics
             else "no numeric metrics provided"
         )
-        
+        trunc_notice = " (evidence subset)" if ctx.evidence_is_truncated else ""
+
         interpretation = (
+
             f"AI Assessment ({ctx.severity.value.upper()} priority): Signal '{ctx.title}' "
             f"exhibits {ctx.confidence * 100:.0f}% confidence across platform(s) "
             f"{', '.join(ctx.affected_platforms) if ctx.affected_platforms else 'unspecified'}. "
-            f"Observed telemetry parameters ({metrics_str}).{facts_summary} "
+            f"Observed telemetry parameters ({metrics_str}).{facts_summary}{trunc_notice} "
             f"{ctx.summary}"
         )
 
@@ -65,7 +66,7 @@ class MockAIProvider(BaseAIProvider):
         # Build AI recommendations
         recommendations: List[str] = [
             f"Monitor platform signals for '{ctx.affected_topic or ctx.title}' over the next evaluation window.",
-            f"Review supporting telemetry posts (count={len(ctx.supporting_post_ids)}).",
+            f"Review supporting telemetry posts (total count={ctx.total_supporting_post_count}, selected context subset={len(ctx.supporting_post_ids)}).",
         ]
         if ctx.severity in ("critical", "high"):
             recommendations.append("Alert domain leads for urgent operational triage.")
@@ -74,7 +75,8 @@ class MockAIProvider(BaseAIProvider):
 
         confidence_assessment = (
             f"Statistical confidence is rated at {ctx.confidence:.2f}. "
-            f"Evidence grounding is based on {len(ctx.supporting_post_ids)} primary post references."
+            f"Evidence grounding is based on {ctx.total_supporting_post_count} primary post references "
+            f"(context subset includes {len(ctx.supporting_post_ids)} IDs)."
         )
 
         initial_response = AIAnalysisResponse(
@@ -82,16 +84,7 @@ class MockAIProvider(BaseAIProvider):
             interpretation=interpretation,
             ai_recommendations=recommendations,
             confidence_assessment=confidence_assessment,
-            grounding_metadata=AIGroundingMetadata(
-                insight_id=ctx.insight_id,
-                supporting_post_ids=ctx.supporting_post_ids,
-                external_post_ids=ctx.external_post_ids,
-                platforms=ctx.affected_platforms,
-                time_window=ctx.time_window,
-                deterministic_metrics_used=ctx.deterministic_metrics,
-                facts_count=len(ctx.facts),
-                is_fully_grounded=True,
-            ),
+            grounding_metadata=extract_grounding_metadata(ctx),
             provider_name=self.provider_name,
             model_name=self.model_name,
             generated_at=now,

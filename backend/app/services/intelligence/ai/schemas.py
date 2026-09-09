@@ -10,6 +10,7 @@ from app.schemas.intelligence import (
     InsightSeverity,
     InsightType,
 )
+from app.schemas.post import RawPostPayload
 from app.schemas.trend import TimeWindow
 
 
@@ -21,15 +22,20 @@ class AIGroundingMetadata(BaseModel):
     insight_id: str = Field(..., description="Unique ID of the parent insight")
     evidence_topic_id: Optional[str] = Field(default=None, description="Topic cluster identifier if applicable")
     evidence_topic_label: Optional[str] = Field(default=None, description="Topic cluster label if applicable")
-    supporting_post_ids: List[int] = Field(default_factory=list, description="Primary database post IDs supporting the insight")
-    external_post_ids: List[str] = Field(default_factory=list, description="Platform external post IDs supporting the insight")
+    total_supporting_post_count: int = Field(default=0, ge=0, description="Total count of supporting DB post records")
+    supporting_post_ids: List[int] = Field(default_factory=list, description="Selected/bounded database post IDs passed to context")
+    total_external_post_count: int = Field(default=0, ge=0, description="Total count of external post references")
+    external_post_ids: List[str] = Field(default_factory=list, description="Selected/bounded external platform post IDs")
+    total_key_author_count: int = Field(default=0, ge=0, description="Total count of key authors driving narrative")
+    total_fact_count: int = Field(default=0, ge=0, description="Total count of deterministic factual assertions")
+    evidence_is_truncated: bool = Field(default=False, description="True if selected evidence is a subset of total evidence universe")
     platforms: List[str] = Field(default_factory=list, description="Social media platforms where evidence was detected")
     time_window: Optional[TimeWindow] = Field(default=None, description="Time boundary for evidence observation")
     deterministic_metrics_used: Dict[str, Any] = Field(
         default_factory=dict,
         description="Key numerical metrics provided to the AI context (z_score, growth_rate, sentiment_score, etc.)",
     )
-    facts_count: int = Field(default=0, ge=0, description="Number of deterministic factual assertions in AI context")
+    facts_count: int = Field(default=0, ge=0, description="Number of selected deterministic facts in AI context")
     is_fully_grounded: bool = Field(default=True, description="True if evidence is available and verified; false if missing or flagged")
 
     model_config = ConfigDict(from_attributes=True)
@@ -39,6 +45,11 @@ class AIContext(BaseModel):
     """
     Structured context extracted exclusively from deterministic intelligence outputs.
     Serves as the sole factual payload provided to AI providers for interpretation.
+
+    Guarantees:
+
+    - Authoritative totals are preserved separately from selected/compacted item lists.
+    - AI providers know when evidence is a context subset (evidence_is_truncated=True).
     """
     insight_id: str = Field(..., description="Target insight identifier")
     type: InsightType = Field(..., description="Categorical taxonomy type")
@@ -46,13 +57,32 @@ class AIContext(BaseModel):
     summary: str = Field(..., description="Deterministic summary statement")
     severity: InsightSeverity = Field(..., description="Triage priority level")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Statistical confidence score")
+    confidence_rationale: Optional[str] = Field(default=None, description="Explanation of statistical confidence")
+    severity_rationale: Optional[str] = Field(default=None, description="Explanation of triage priority level")
     affected_topic: Optional[str] = Field(default=None, description="Primary topic label")
     affected_platforms: List[str] = Field(default_factory=list, description="Platforms affected")
-    facts: List[str] = Field(default_factory=list, description="Verifiable facts extracted from deterministic engine")
+
+    # Facts with totals and bounds
+    total_fact_count: int = Field(default=0, ge=0, description="Total count of deterministic facts")
+    facts: List[str] = Field(default_factory=list, description="Verifiable selected facts extracted from deterministic engine")
+
     deterministic_metrics: Dict[str, Any] = Field(default_factory=dict, description="Numeric telemetry metrics")
-    supporting_post_ids: List[int] = Field(default_factory=list, description="Post database IDs")
-    external_post_ids: List[str] = Field(default_factory=list, description="External platform post IDs")
-    key_authors: List[str] = Field(default_factory=list, description="Leading author handles")
+
+    # Supporting Posts with totals and bounds
+    total_supporting_post_count: int = Field(default=0, ge=0, description="Authoritative total count of supporting DB posts")
+    supporting_post_ids: List[int] = Field(default_factory=list, description="Selected DB post IDs for context subset")
+
+    # External Posts with totals and bounds
+    total_external_post_count: int = Field(default=0, ge=0, description="Authoritative total count of external platform posts")
+    external_post_ids: List[str] = Field(default_factory=list, description="Selected external post IDs for context subset")
+
+    # Key Authors with totals and bounds
+    total_key_author_count: int = Field(default=0, ge=0, description="Authoritative total count of key authors")
+    key_authors: List[str] = Field(default_factory=list, description="Selected key author handles for context subset")
+
+    evidence_is_truncated: bool = Field(default=False, description="True if selected evidence items are a subset of total evidence universe")
+
+    is_fully_grounded: bool = Field(default=True, description="True if verifiable evidence is present; false if evidence is missing")
     time_window: Optional[TimeWindow] = Field(default=None, description="Temporal window of evidence")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Context creation timestamp")
 
@@ -63,45 +93,23 @@ class AIContext(BaseModel):
         cls,
         insight: InsightItem,
         explanation: Optional[InsightExplanation] = None,
+        max_post_ids: int = 25,
+        max_external_post_ids: int = 25,
+        max_key_authors: int = 10,
+        max_facts: int = 10,
     ) -> "AIContext":
         """
         Factory constructing an AIContext strictly from an InsightItem and optional InsightExplanation.
-        Guarantees no arbitrary application state or hallucinated context is injected.
+        Delegates to EvidenceGroundedContextBuilder for robust truncation and totality preservation.
         """
-        ev: InsightEvidence = insight.evidence
-        facts: List[str] = []
-        if explanation and explanation.facts:
-            facts = list(explanation.facts)
-
-        metrics: Dict[str, Any] = {}
-        if ev.growth_rate is not None:
-            metrics["growth_rate"] = ev.growth_rate
-        if ev.current_volume is not None:
-            metrics["current_volume"] = ev.current_volume
-        if ev.baseline_volume is not None:
-            metrics["baseline_volume"] = ev.baseline_volume
-        if ev.z_score is not None:
-            metrics["z_score"] = ev.z_score
-        if ev.sentiment_score is not None:
-            metrics["sentiment_score"] = ev.sentiment_score
-        if ev.dominant_sentiment is not None:
-            metrics["dominant_sentiment"] = ev.dominant_sentiment
-
-        return cls(
-            insight_id=insight.id,
-            type=insight.type,
-            title=insight.title,
-            summary=insight.summary,
-            severity=insight.severity,
-            confidence=insight.confidence,
-            affected_topic=insight.affected_topic,
-            affected_platforms=insight.affected_platforms or ev.platforms,
-            facts=facts,
-            deterministic_metrics=metrics,
-            supporting_post_ids=ev.post_ids,
-            external_post_ids=ev.external_post_ids,
-            key_authors=ev.key_authors,
-            time_window=ev.time_window,
+        from app.services.intelligence.ai.context_builder import EvidenceGroundedContextBuilder
+        return EvidenceGroundedContextBuilder.build_context(
+            insight=insight,
+            explanation=explanation,
+            max_post_ids=max_post_ids,
+            max_external_post_ids=max_external_post_ids,
+            max_key_authors=max_key_authors,
+            max_facts=max_facts,
         )
 
 
@@ -147,6 +155,49 @@ class AIAnalysisResponse(BaseModel):
     validation_notes: List[str] = Field(
         default_factory=list,
         description="Validation feedback or audit logs from grounding checker",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AIInterpretationRequest(BaseModel):
+    """
+    Payload for requesting AI qualitative interpretation of a specific insight.
+    Includes strict server-side bounding on max_post_ids and prompt_instructions.
+    """
+    platform: Optional[str] = Field(default=None, description="Optional platform filter scoping")
+    raw_posts: Optional[List[RawPostPayload]] = Field(
+        default=None,
+        description="Optional in-memory raw posts for ad-hoc insight interpretation",
+    )
+    prompt_instructions: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional analyst instructions (treated as untrusted input)",
+    )
+    max_post_ids: int = Field(
+        default=25,
+        ge=1,
+        le=50,
+        description="Server-side bounded maximum number of supporting post IDs to include in context",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AIInterpretationResponse(BaseModel):
+    """
+    Auditable combined response integrating deterministic facts/evidence with AI interpretation.
+    Strictly isolates AI qualitative outputs from deterministic telemetry and baseline explanations.
+    """
+    insight_id: str = Field(..., description="Unique deterministic identifier of the insight")
+    insight: InsightItem = Field(..., description="Deterministic source of truth insight with evidence")
+    explanation: InsightExplanation = Field(..., description="Deterministic auditable baseline explanation")
+    ai_analysis: AIAnalysisResponse = Field(..., description="AI-assisted qualitative narrative synthesis and recommendations")
+    is_fallback_used: bool = Field(default=False, description="True if AI provider fallback was used due to unavailability or failure")
+    generated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Timestamp when response was assembled in UTC",
     )
 
     model_config = ConfigDict(from_attributes=True)

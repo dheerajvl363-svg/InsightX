@@ -26,6 +26,11 @@ from app.services.intelligence.service import (
     IntelligenceAnalysisService,
     get_intelligence_analyzer,
 )
+from app.services.intelligence.ai.schemas import AIInterpretationResponse
+from app.services.intelligence.ai.service import (
+    AIAssistedIntelligenceService,
+    get_ai_intelligence_service,
+)
 from app.services.network import NetworkAnalysisService
 from app.services.sentiment import SentimentAnalysisService
 from app.services.topic import TopicAnalysisService
@@ -35,8 +40,6 @@ logger = logging.getLogger(__name__)
 
 
 class UnifiedIntelligenceWorkflow:
-
-
     """
     End-to-End Unified Intelligence Pipeline Orchestrator.
     Connects:
@@ -45,6 +48,7 @@ class UnifiedIntelligenceWorkflow:
       → Deterministic anomaly & narrative detection
       → Auditable explanation generation
       → Traceable evidence provenance references
+      → Optional AI-assisted qualitative interpretation
     """
 
     def __init__(
@@ -56,6 +60,7 @@ class UnifiedIntelligenceWorkflow:
         dashboard_service: Optional[DashboardService] = None,
         intelligence_service: Optional[IntelligenceAnalysisService] = None,
         explanation_engine: Optional[DeterministicExplanationEngine] = None,
+        ai_service: Optional[AIAssistedIntelligenceService] = None,
     ):
         self.sentiment_service = sentiment_service or SentimentAnalysisService()
         self.topic_service = topic_service or TopicAnalysisService()
@@ -64,6 +69,8 @@ class UnifiedIntelligenceWorkflow:
         self.dashboard_service = dashboard_service
         self.intelligence_service = intelligence_service or get_intelligence_analyzer()
         self.explanation_engine = explanation_engine or get_explanation_engine()
+        self.ai_service = ai_service or get_ai_intelligence_service()
+
 
     @property
     def model_name(self) -> str:
@@ -117,6 +124,7 @@ class UnifiedIntelligenceWorkflow:
         min_confidence: float = 0.5,
         max_insights: int = 20,
         generate_explanations: bool = True,
+        include_ai: bool = False,
     ) -> UnifiedWorkflowResult:
         """
         Executes the unified end-to-end intelligence workflow.
@@ -145,6 +153,7 @@ class UnifiedIntelligenceWorkflow:
                 total_explanations=0,
                 batch_insights=empty_insights,
                 explanations=[],
+                ai_analyses=[],
                 analytics_summary={"total_posts": 0, "status": "empty_dataset"},
                 model=self.model_name,
                 generated_at=now,
@@ -201,7 +210,15 @@ class UnifiedIntelligenceWorkflow:
             batch_expl = self.explanation_engine.explain_batch(batch_insight=batch_insights)
             explanations = batch_expl.explanations
 
-        # Stage 4: Package unified report
+        # Stage 4: Optional AI qualitative interpretation
+        ai_analyses: List[Any] = []
+        if include_ai and explanations and batch_insights.insights:
+            ai_analyses = self.ai_service.analyze_batch(
+                insights=batch_insights.insights,
+                explanations=explanations,
+            )
+
+        # Stage 5: Package unified report
         platforms_detected = list({p.platform for p in resolved_posts if p.platform})
         analytics_summary: Dict[str, Any] = {
             "total_posts": len(resolved_posts),
@@ -216,6 +233,7 @@ class UnifiedIntelligenceWorkflow:
             total_explanations=len(explanations),
             batch_insights=batch_insights,
             explanations=explanations,
+            ai_analyses=ai_analyses,
             analytics_summary=analytics_summary,
             model=self.model_name,
             generated_at=now,
@@ -238,6 +256,7 @@ class UnifiedIntelligenceWorkflow:
             db=db,
             platform=platform,
             generate_explanations=True,
+            include_ai=False,
         )
 
         for expl in workflow_res.explanations:
@@ -250,6 +269,66 @@ class UnifiedIntelligenceWorkflow:
                 return self.explanation_engine.explain_insight(item)
 
         raise LookupError(f"Insight '{insight_id}' not found in recent synthesized intelligence.")
+
+    def get_ai_interpretation(
+        self,
+        insight_id: str,
+        platform: Optional[str] = None,
+        prompt_instructions: Optional[str] = None,
+        max_post_ids: int = 25,
+        db: Optional[Session] = None,
+        posts: Optional[List[AnalyticsReadyPost]] = None,
+        raw_posts: Optional[List[RawPostPayload]] = None,
+    ) -> AIInterpretationResponse:
+        """
+        Resolves an individual insight, computes deterministic explanation,
+        and synthesizes an evidence-grounded AI qualitative interpretation.
+        Enforces server-side bounds on max_post_ids and prompt_instructions.
+        """
+        bounded_post_ids = min(max(1, max_post_ids), 50)
+
+        workflow_res = self.run_workflow(
+            posts=posts,
+            raw_posts=raw_posts,
+            db=db,
+            platform=platform,
+            generate_explanations=True,
+            include_ai=False,
+        )
+
+        target_insight: Optional[InsightItem] = None
+        for item in workflow_res.batch_insights.insights:
+            if item.id == insight_id:
+                target_insight = item
+                break
+
+        if not target_insight:
+            raise LookupError(f"Insight '{insight_id}' not found in recent synthesized intelligence.")
+
+        target_explanation: Optional[InsightExplanation] = None
+        for expl in workflow_res.explanations:
+            if expl.insight_id == insight_id:
+                target_explanation = expl
+                break
+
+        if not target_explanation:
+            target_explanation = self.explanation_engine.explain_insight(target_insight)
+
+        ai_res = self.ai_service.analyze_insight(
+            insight=target_insight,
+            explanation=target_explanation,
+            prompt_instructions=prompt_instructions,
+            max_post_ids=bounded_post_ids,
+        )
+
+        return AIInterpretationResponse(
+            insight_id=insight_id,
+            insight=target_insight,
+            explanation=target_explanation,
+            ai_analysis=ai_res,
+            is_fallback_used=ai_res.is_flagged_unsupported,
+            generated_at=datetime.now(timezone.utc),
+        )
 
 
 def get_unified_workflow(
@@ -267,4 +346,5 @@ def get_unified_workflow(
         dashboard_service=dashboard_srv,
         intelligence_service=get_intelligence_analyzer(),
         explanation_engine=get_explanation_engine(),
+        ai_service=get_ai_intelligence_service(),
     )
