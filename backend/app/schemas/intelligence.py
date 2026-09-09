@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.data_quality import AnalyticsReadyPost
 from app.schemas.post import RawPostPayload
@@ -198,6 +198,329 @@ class UnifiedWorkflowResult(BaseModel):
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp of unified intelligence report generation in UTC",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DemoProvenance(str, Enum):
+    """
+    Typed provenance taxonomy distinguishing user-supplied evidence from contextual data.
+    Mandatory for SIH demonstration to ensure verifiable auditability and zero data fabrication.
+    """
+    USER_SUPPLIED = "user_supplied"
+    SAMPLE_CONTEXT = "sample_context"
+    DATABASE_CONTEXT = "database_context"
+    DERIVED = "derived"
+    AI_INTERPRETATION = "ai_interpretation"
+
+
+class DemoContextMode(str, Enum):
+    """
+    Supported contextual data augmentation modes for SIH demo analysis.
+    """
+    SAMPLE_STREAM = "sample_stream"
+    DATABASE = "database"
+    NONE = "none"
+
+
+class DemoPostInput(BaseModel):
+    """
+    Input schema representing ONE user-supplied social media post for demo analysis.
+    Supports simple manual entry (e.g. pasted text, handle, engagement counts)
+    as well as payloads conforming to X API v2 style structures.
+    """
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Main social post content or caption (1 to 2000 characters)",
+    )
+    platform: str = Field(
+        default="X",
+        description="Source platform name (defaults to X)",
+    )
+    author_handle: Optional[str] = Field(
+        default=None,
+        description="Author handle or username (e.g., '@example')",
+    )
+    author_id: Optional[str] = Field(
+        default=None,
+        description="Author platform identifier if available",
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description="Direct link to the original post",
+    )
+    external_post_id: Optional[str] = Field(
+        default=None,
+        description="Unique platform post ID (auto-generated if omitted)",
+    )
+    created_at: Optional[Union[datetime, str, int, float]] = Field(
+        default=None,
+        description="Timestamp when post was authored",
+    )
+    likes: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Count of likes/reactions",
+    )
+    replies: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Count of comments or replies",
+    )
+    reposts: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Count of retweets or shares",
+    )
+    views: Optional[int] = Field(
+        default=0,
+        ge=0,
+        description="Count of impressions or views",
+    )
+    raw_metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional platform-specific raw metadata or entity annotations",
+    )
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    @field_validator("text")
+    @classmethod
+    def validate_text_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("text must not be empty or whitespace only")
+        cleaned = v.strip()
+        if len(cleaned) > 2000:
+            raise ValueError("text must not exceed 2000 characters")
+        return cleaned
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("platform must not be empty or whitespace only")
+        return v.strip()
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_x_aliases(cls, data: Any) -> Any:
+        """
+        Maps common alias keys from various raw social media APIs and manual input forms.
+        Supports:
+        - content, message, caption -> text
+        - author, author_username, username -> author_handle
+        - id, tweet_id, post_id -> external_post_id
+        - posted_at, timestamp, date -> created_at
+        - retweets, shares -> reposts
+        - comments -> replies
+        - impressions -> views
+        - nested public_metrics / metrics dict (X v2 API style)
+        - nested author dict
+        """
+        if not isinstance(data, dict):
+            return data
+
+        d = dict(data)
+
+        # 1. Text mapping
+        if not d.get("text"):
+            for k in ("content", "message", "caption"):
+                if d.get(k):
+                    d["text"] = d[k]
+                    break
+
+        # 2. Author mapping
+        author_raw = d.get("author") or d.get("user")
+        if isinstance(author_raw, dict):
+            if not d.get("author_handle"):
+                d["author_handle"] = author_raw.get("username") or author_raw.get("handle")
+            if not d.get("author_id"):
+                d["author_id"] = str(author_raw.get("id")) if author_raw.get("id") else None
+        elif isinstance(author_raw, str) and not d.get("author_handle"):
+            d["author_handle"] = author_raw
+
+        if not d.get("author_handle"):
+            for k in ("author_username", "username", "handle"):
+                if d.get(k):
+                    d["author_handle"] = d[k]
+                    break
+
+        # 3. External Post ID
+        if not d.get("external_post_id"):
+            for k in ("id", "tweet_id", "post_id", "external_id"):
+                if d.get(k):
+                    d["external_post_id"] = str(d[k]).strip()
+                    break
+
+        # 4. Created At
+        if not d.get("created_at"):
+            for k in ("posted_at", "timestamp", "date"):
+                if d.get(k):
+                    d["created_at"] = d[k]
+                    break
+
+        # 5. Engagement Metrics (support flat keys and nested public_metrics / metrics dicts)
+        pub_metrics = d.get("public_metrics") or d.get("metrics")
+        if isinstance(pub_metrics, dict):
+            if "likes" not in d and "like_count" in pub_metrics:
+                d["likes"] = pub_metrics["like_count"]
+            elif "likes" not in d and "likes" in pub_metrics:
+                d["likes"] = pub_metrics["likes"]
+
+            if "reposts" not in d and "retweet_count" in pub_metrics:
+                d["reposts"] = pub_metrics["retweet_count"]
+            elif "reposts" not in d and "shares" in pub_metrics:
+                d["reposts"] = pub_metrics["shares"]
+
+            if "replies" not in d and "reply_count" in pub_metrics:
+                d["replies"] = pub_metrics["reply_count"]
+            elif "replies" not in d and "comments" in pub_metrics:
+                d["replies"] = pub_metrics["comments"]
+
+            if "views" not in d and "impression_count" in pub_metrics:
+                d["views"] = pub_metrics["impression_count"]
+            elif "views" not in d and "views" in pub_metrics:
+                d["views"] = pub_metrics["views"]
+
+        # Flat metric aliases
+        if "reposts" not in d:
+            if "retweets" in d:
+                d["reposts"] = d["retweets"]
+            elif "shares" in d:
+                d["reposts"] = d["shares"]
+
+        if "replies" not in d and "comments" in d:
+            d["replies"] = d["comments"]
+
+        if "views" not in d and "impressions" in d:
+            d["views"] = d["impressions"]
+
+        return d
+
+    def to_raw_post_payload(self) -> RawPostPayload:
+        """
+        Transforms this DemoPostInput into a standardized RawPostPayload.
+        Enables seamless reuse of existing DataNormalizer and IngestionService.
+        """
+        import uuid
+        ext_id = self.external_post_id or f"demo_{uuid.uuid4().hex[:12]}"
+        metrics_dict = {
+            "likes": self.likes or 0,
+            "comments": self.replies or 0,
+            "shares": self.reposts or 0,
+            "views": self.views or 0,
+        }
+        metadata = dict(self.raw_metadata or {})
+        metadata["is_user_seed"] = True
+        metadata["provenance"] = DemoProvenance.USER_SUPPLIED.value
+        if self.author_id:
+            metadata["author_id"] = self.author_id
+
+        return RawPostPayload(
+            platform=self.platform or "X",
+            external_id=ext_id,
+            text=self.text,
+            author_username=self.author_handle,
+            posted_at=self.created_at or datetime.now(timezone.utc),
+            url=self.url,
+            metrics=metrics_dict,
+            metadata=metadata,
+            raw_payload=self.model_dump(mode="json"),
+        )
+
+
+class DemoAnalyzePostsRequest(BaseModel):
+    """
+    Batch-oriented request contract for single-post and multi-post demo analysis (1 to 50 posts).
+    A single post is simply a batch of size 1. Preserves input order and rejects out-of-bounds requests.
+    """
+    posts: List[DemoPostInput] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="List of 1 to 50 user-supplied social posts to analyze",
+    )
+    context_mode: DemoContextMode = Field(
+        default=DemoContextMode.SAMPLE_STREAM,
+        description="Contextual data stream mode for analytical comparison",
+    )
+    persist_to_db: bool = Field(
+        default=True,
+        description="Whether to persist user-supplied posts to the PostgreSQL database",
+    )
+    include_ai: bool = Field(
+        default=True,
+        description="Whether to generate grounded AI qualitative interpretation",
+    )
+    prompt_instructions: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional custom focus instructions (treated as untrusted input)",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DemoAnalysisResponse(BaseModel):
+    """
+    Comprehensive response model for SIH demo analysis workflow.
+    Guarantees transparent separation between user-supplied seed posts, background context,
+    deterministic analytics, and qualitative AI interpretations.
+    """
+    seed_posts: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="User-supplied seed posts after normalization and provenance tagging",
+    )
+    provenance: DemoProvenance = Field(
+        default=DemoProvenance.USER_SUPPLIED,
+        description="Provenance classification of primary seed posts",
+    )
+    user_post_count: int = Field(
+        ...,
+        ge=1,
+        le=50,
+        description="Count of user-supplied posts analyzed",
+    )
+    context_post_count: int = Field(
+        default=0,
+        ge=0,
+        description="Count of background context posts used for analytical baseline",
+    )
+    total_context_size: int = Field(
+        ...,
+        ge=1,
+        description="Total universe of posts evaluated (user posts + background context)",
+    )
+    context_mode: DemoContextMode = Field(
+        ...,
+        description="Contextual data stream mode used during execution",
+    )
+    persisted: bool = Field(
+        default=False,
+        description="Whether user-supplied posts were persisted to database",
+    )
+    unified_report: UnifiedWorkflowResult = Field(
+        ...,
+        description="Complete multi-facet analytics and deterministic intelligence report",
+    )
+    primary_insight: Optional[InsightItem] = Field(
+        default=None,
+        description="Primary detected insight directly grounded in user-supplied seed posts",
+    )
+    primary_ai_interpretation: Optional[Any] = Field(
+        default=None,
+        description="Evidence-grounded AI qualitative interpretation if requested",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Operational warnings, data quality notices, or fallback annotations",
+    )
+    executed_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Timestamp of demo execution in UTC",
     )
 
     model_config = ConfigDict(from_attributes=True)
