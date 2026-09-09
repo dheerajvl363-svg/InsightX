@@ -21,6 +21,11 @@ from app.services.intelligence.ai import (
     get_ai_provider,
 )
 
+from app.services.intelligence.demo import (
+    DemoIntelligenceService,
+    get_demo_intelligence_service,
+)
+
 __all__ = [
     "BaseIntelligenceEngine",
     "DeterministicIntelligenceEngine",
@@ -30,6 +35,8 @@ __all__ = [
     "get_explanation_engine",
     "UnifiedIntelligenceWorkflow",
     "get_unified_workflow",
+    "DemoIntelligenceService",
+    "get_demo_intelligence_service",
     "BaseAIProvider",
     "MockAIProvider",
     "get_ai_provider",
