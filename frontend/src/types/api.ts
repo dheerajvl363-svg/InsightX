@@ -438,3 +438,81 @@ export interface BatchExplanationResult {
   model: string;
   generated_at: string;
 }
+
+// =============================================================================
+// Phase 9 Demo Analysis Schemas (app/schemas/intelligence.py)
+// =============================================================================
+
+export type DemoProvenance =
+  | 'user_supplied'
+  | 'sample_context'
+  | 'database_context'
+  | 'derived'
+  | 'ai_interpretation';
+
+export type DemoContextMode = 'sample_stream' | 'database' | 'none';
+
+export interface DemoPostInput {
+  text: string;
+  platform?: string;
+  author_handle?: string | null;
+  author_id?: string | null;
+  url?: string | null;
+  external_post_id?: string | null;
+  created_at?: string | null;
+  likes?: number;
+  replies?: number;
+  reposts?: number;
+  views?: number;
+  raw_metadata?: Record<string, unknown>;
+}
+
+export interface DemoAnalyzePostsRequest {
+  posts: DemoPostInput[];
+  context_mode?: DemoContextMode;
+  persist_to_db?: boolean;
+  include_ai?: boolean;
+  prompt_instructions?: string | null;
+}
+
+export interface UnifiedWorkflowResult {
+  total_insights: number;
+  total_explanations: number;
+  batch_insights: BatchInsightResult;
+  explanations: InsightExplanation[];
+  ai_analyses: Record<string, unknown>[];
+  analytics_summary: Record<string, unknown>;
+  model: string;
+  generated_at: string;
+}
+
+export interface DemoSeedPost {
+  platform: string;
+  external_post_id: string;
+  text: string;
+  author_username?: string | null;
+  author_display_name?: string | null;
+  posted_at?: string | null;
+  url?: string | null;
+  metrics?: PostMetricsSchema;
+  provenance: DemoProvenance;
+  is_user_seed: boolean;
+  db_id?: number | null;
+  char_count?: number;
+  word_count?: number;
+}
+
+export interface DemoAnalysisResponse {
+  seed_posts: DemoSeedPost[];
+  provenance: DemoProvenance;
+  user_post_count: number;
+  context_post_count: number;
+  total_context_size: number;
+  context_mode: DemoContextMode;
+  persisted: boolean;
+  unified_report: UnifiedWorkflowResult;
+  primary_insight?: InsightItem | null;
+  primary_ai_interpretation?: Record<string, unknown> | null;
+  warnings: string[];
+  executed_at: string;
+}

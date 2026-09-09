@@ -6,3 +6,4 @@ export { TopicEmergenceChart } from './TopicEmergenceChart';
 export { CustomChartTooltip } from './CustomChartTooltip';
 export { IntelligenceFeedCard } from './IntelligenceFeedCard';
 export { InsightExplanationDrawer } from './InsightExplanationDrawer';
+export { AnalyzePostModal } from './AnalyzePostModal';

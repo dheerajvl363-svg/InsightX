@@ -17,6 +17,7 @@ import {
   Square,
   Clock,
   FileCheck2,
+  Bot,
 } from 'lucide-react';
 import { useInsightExplanation } from '../../hooks/useInsightExplanation';
 import type { InsightItem, InsightSeverity, InsightType } from '../../types/api';
@@ -25,12 +26,14 @@ import { Badge, Button, Skeleton, ErrorBanner } from '../common';
 export interface InsightExplanationDrawerProps {
   insight: InsightItem | null;
   platform?: string;
+  aiInterpretation?: Record<string, unknown> | null;
   onClose: () => void;
 }
 
 export const InsightExplanationDrawer: React.FC<InsightExplanationDrawerProps> = ({
   insight,
   platform,
+  aiInterpretation,
   onClose,
 }) => {
   const navigate = useNavigate();
@@ -478,6 +481,135 @@ export const InsightExplanationDrawer: React.FC<InsightExplanationDrawerProps> =
               </div>
             )}
           </div>
+
+          {/* Dedicated Card: AI Qualitative Interpretation */}
+          {(() => {
+            const activeAi =
+              aiInterpretation ||
+              (insight?.metadata?.ai_analysis as Record<string, unknown> | undefined) ||
+              ((explanation as unknown as Record<string, unknown>)?.ai_analysis as Record<string, unknown> | undefined);
+
+            if (!activeAi) {
+              return (
+                <div
+                  style={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                    border: '1px dashed var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0.85rem 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                  }}
+                >
+                  <Bot size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                    AI qualitative interpretation is optional or not generated for this insight. Showing deterministic evidence-based explanation.
+                  </span>
+                </div>
+              );
+            }
+
+            const interpretationText = (activeAi.interpretation as string) || '';
+            const aiRecommendations = (activeAi.ai_recommendations as string[]) || [];
+            const confidenceAssessment = (activeAi.confidence_assessment as string) || '';
+            const groundingMeta = (activeAi.grounding_metadata as Record<string, unknown>) || {};
+            const isFullyGrounded = groundingMeta.is_fully_grounded !== false;
+            const providerName = (activeAi.provider_name as string) || 'AI Assistant';
+            const modelName = (activeAi.model_name as string) || 'insightx-ai-v1';
+            const disclaimerText =
+              (activeAi.disclaimer as string) ||
+              'AI qualitative interpretation assistant. Deterministic analytics and evidence remain the source of truth.';
+
+            return (
+              <div
+                style={{
+                  backgroundColor: 'rgba(24, 19, 45, 0.55)',
+                  border: '1px solid rgba(168, 85, 247, 0.35)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1.25rem',
+                  boxShadow: '0 4px 16px rgba(168, 85, 247, 0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                    <Bot size={18} style={{ color: 'var(--accent-purple)' }} />
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+                      AI Qualitative Interpretation
+                    </h3>
+                  </div>
+                  <Badge variant={isFullyGrounded ? 'primary' : 'neutral'} size="sm">
+                    {isFullyGrounded ? 'Evidence-Grounded' : 'Fallback Safe'}
+                  </Badge>
+                </div>
+
+                {/* Visible Mandatory Disclaimer */}
+                <div
+                  style={{
+                    backgroundColor: 'rgba(168, 85, 247, 0.12)',
+                    border: '1px solid rgba(168, 85, 247, 0.25)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '0.55rem 0.75rem',
+                    marginBottom: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <Sparkles size={14} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-primary)', lineHeight: 1.35, fontWeight: 500 }}>
+                    {disclaimerText}
+                  </span>
+                </div>
+
+                {/* Narrative Synthesis */}
+                {interpretationText && (
+                  <div style={{ marginBottom: '0.85rem' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+                      Narrative Synthesis
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.45, margin: 0 }}>
+                      {interpretationText}
+                    </p>
+                  </div>
+                )}
+
+                {/* AI Recommendations */}
+                {aiRecommendations.length > 0 && (
+                  <div style={{ marginBottom: '0.85rem' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }}>
+                      AI Strategic Recommendations
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {aiRecommendations.map((rec, idx) => (
+                        <li key={idx} style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Confidence & Nuance Assessment */}
+                {confidenceAssessment && (
+                  <div style={{ marginBottom: '0.85rem' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+                      Nuance & Uncertainty Assessment
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', lineHeight: 1.4, margin: 0, fontStyle: 'italic' }}>
+                      "{confidenceAssessment}"
+                    </p>
+                  </div>
+                )}
+
+                {/* AI Provider & Model Tag */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                  <span>Provider: <strong style={{ color: 'var(--text-secondary)' }}>{providerName}</strong></span>
+                  <span>Model: <code style={{ color: 'var(--accent-purple)' }}>{modelName}</code></span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Section 4: Evidence & Traceability Metrics */}
           <div

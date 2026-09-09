@@ -21,6 +21,8 @@ import type {
   PostSummary,
   TimelineResponse,
   TopicListResponse,
+  DemoAnalyzePostsRequest,
+  DemoAnalysisResponse,
 } from '../types/api';
 
 export const API_BASE_URL: string =
@@ -184,4 +186,14 @@ export const apiService = {
       body: JSON.stringify(payload),
     });
   },
+
+  // Phase 9 Demo Analysis Pipeline (POST /api/v1/intelligence/demo/analyze-posts)
+  async analyzeDemoPosts(payload: DemoAnalyzePostsRequest): Promise<DemoAnalysisResponse> {
+    return request<DemoAnalysisResponse>('/intelligence/demo/analyze-posts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };
+
+export const api = apiService;

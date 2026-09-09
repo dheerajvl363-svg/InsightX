@@ -10,18 +10,20 @@ import {
   Share2,
   Activity,
   Compass,
+  ExternalLink,
 } from 'lucide-react';
 import { Card, StatCard, Badge, Button, ErrorBanner } from '../common';
 import { useOverview } from '../../hooks/useOverview';
 import { useTimeline } from '../../hooks/useTimeline';
 import { useInsights } from '../../hooks/useInsights';
-import type { InsightItem } from '../../types/api';
+import type { InsightItem, DemoAnalysisResponse } from '../../types/api';
 import { TimelineVolumeChart } from './TimelineVolumeChart';
 import { PlatformDistributionChart } from './PlatformDistributionChart';
 import { SentimentAnalyticsChart } from './SentimentAnalyticsChart';
 import { TopicEmergenceChart } from './TopicEmergenceChart';
 import { IntelligenceFeedCard } from './IntelligenceFeedCard';
 import { InsightExplanationDrawer } from './InsightExplanationDrawer';
+import { AnalyzePostModal } from './AnalyzePostModal';
 
 const PLATFORMS = [
   { id: 'all', label: 'All Feeds' },
@@ -36,6 +38,8 @@ export const DashboardPage: React.FC = () => {
   const [selectedInterval, setSelectedInterval] = useState<'hour' | 'day' | 'week'>('day');
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
   const [selectedInsight, setSelectedInsight] = useState<InsightItem | null>(null);
+  const [isAnalyzeModalOpen, setIsAnalyzeModalOpen] = useState<boolean>(false);
+  const [demoResult, setDemoResult] = useState<DemoAnalysisResponse | null>(null);
 
   const overviewParams = useMemo(() => {
     return selectedPlatform !== 'all' ? { platform: selectedPlatform } : {};
@@ -113,6 +117,19 @@ export const DashboardPage: React.FC = () => {
 
         {/* Global Action Bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Sparkles size={14} />}
+            onClick={() => setIsAnalyzeModalOpen(true)}
+            style={{
+              backgroundColor: 'var(--accent-purple)',
+              borderColor: 'var(--accent-purple)',
+            }}
+          >
+            Analyze Social Posts
+          </Button>
+
           <Button
             size="sm"
             variant="secondary"
@@ -227,6 +244,193 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Phase 9.6: User-Supplied Posts / Primary Evidence Banner */}
+      {demoResult && (
+        <div
+          style={{
+            marginBottom: '1.75rem',
+            backgroundColor: 'rgba(24, 19, 45, 0.65)',
+            border: '1px solid rgba(168, 85, 247, 0.45)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: '0 8px 32px rgba(168, 85, 247, 0.12)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Banner Header */}
+          <div
+            style={{
+              padding: '1rem 1.25rem',
+              backgroundColor: 'rgba(30, 27, 75, 0.7)',
+              borderBottom: '1px solid rgba(168, 85, 247, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                  color: 'var(--accent-purple)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Primary User-Supplied Evidence ({demoResult.user_post_count} Post{demoResult.user_post_count > 1 ? 's' : ''})
+                  </span>
+                  <Badge variant="primary" size="sm">
+                    PROVENANCE: {demoResult.provenance.toUpperCase()}
+                  </Badge>
+                  <Badge variant="cyan" size="sm">
+                    Baseline: {demoResult.context_mode.replace('_', ' ').toUpperCase()} ({demoResult.context_post_count} posts)
+                  </Badge>
+                  {demoResult.persisted && (
+                    <Badge variant="positive" size="sm">
+                      Persisted to DB
+                    </Badge>
+                  )}
+                </div>
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', margin: '2px 0 0 0' }}>
+                  Evaluated against {demoResult.context_mode === 'none' ? 'zero background context' : `${demoResult.context_post_count} baseline posts`} (Total Universe: {demoResult.total_context_size}). Deterministic analytics are the source of truth.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setDemoResult(null)}
+                style={{ fontSize: '0.75rem' }}
+              >
+                Exit Demo Mode
+              </Button>
+            </div>
+          </div>
+
+          {/* Seed Posts Cards Grid */}
+          <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Submitted Seed Post{demoResult.seed_posts.length > 1 ? 's' : ''}:
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: demoResult.seed_posts.length > 1 ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr',
+                gap: '0.85rem',
+              }}
+            >
+              {demoResult.seed_posts.map((post, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '0.9rem 1rem',
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <Badge variant="cyan" size="sm">{post.platform}</Badge>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {post.author_username || post.author_display_name || 'Anonymous'}
+                      </span>
+                    </div>
+                    {post.url && (
+                      <a
+                        href={post.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem' }}
+                      >
+                        <span>View Post</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
+
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.45, margin: 0 }}>
+                    {post.text}
+                  </p>
+
+                  {/* Metrics pills */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', fontSize: '0.72rem', color: 'var(--text-tertiary)', paddingTop: '0.35rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                    <span>Likes: <strong style={{ color: 'var(--text-secondary)' }}>{post.metrics?.likes ?? 0}</strong></span>
+                    <span>Reposts: <strong style={{ color: 'var(--text-secondary)' }}>{post.metrics?.shares ?? 0}</strong></span>
+                    <span>Replies: <strong style={{ color: 'var(--text-secondary)' }}>{post.metrics?.comments ?? 0}</strong></span>
+                    <span>Views: <strong style={{ color: 'var(--text-secondary)' }}>{post.metrics?.views ?? 0}</strong></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Highlight Primary Detected Insight if any */}
+            {demoResult.primary_insight && (
+              <div
+                style={{
+                  marginTop: '0.35rem',
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <div style={{ color: 'var(--accent-cyan)' }}>
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                        Primary Signal Grounded in Seed
+                      </span>
+                      <Badge variant={demoResult.primary_insight.severity === 'critical' ? 'negative' : 'neutral'} size="sm">
+                        {demoResult.primary_insight.severity.toUpperCase()}
+                      </Badge>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Confidence: {Math.round(demoResult.primary_insight.confidence * 100)}%
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
+                      {demoResult.primary_insight.title}
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<ArrowRight size={14} />}
+                  onClick={() => setSelectedInsight(demoResult.primary_insight!)}
+                >
+                  Inspect Evidence & AI Explanation
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Error Banners if any endpoint fails */}
       {overviewError && (
         <div style={{ marginBottom: '1.5rem' }}>
@@ -315,10 +519,10 @@ export const DashboardPage: React.FC = () => {
 
       {/* Synthesized AI Intelligence & Alert Feed */}
       <IntelligenceFeedCard
-        insightsData={insightsData}
+        insightsData={demoResult ? demoResult.unified_report.batch_insights : insightsData}
         loading={insightsLoading}
         error={insightsError}
-        onRefresh={refetchInsights}
+        onRefresh={handleRefreshAll}
         onSelectInsight={(insight) => setSelectedInsight(insight)}
         selectedPlatform={platformParam}
       />
@@ -507,7 +711,21 @@ export const DashboardPage: React.FC = () => {
       <InsightExplanationDrawer
         insight={selectedInsight}
         platform={platformParam}
+        aiInterpretation={demoResult?.primary_ai_interpretation}
         onClose={() => setSelectedInsight(null)}
+      />
+
+      {/* Phase 9.5: Analyze Social Posts Modal */}
+      <AnalyzePostModal
+        isOpen={isAnalyzeModalOpen}
+        onClose={() => setIsAnalyzeModalOpen(false)}
+        onSuccess={(result) => {
+          setDemoResult(result);
+          // If primary insight exists, open explanation drawer for immediate inspection
+          if (result.primary_insight) {
+            setSelectedInsight(result.primary_insight);
+          }
+        }}
       />
     </div>
   );
